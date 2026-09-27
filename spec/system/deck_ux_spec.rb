@@ -211,6 +211,37 @@ RSpec.describe "Deck UX", type: :system do
     expect(page.evaluate_script("window.__sourceDispatched")).to eq(true)
   end
 
+  it "reveals a hidden slide for a structural discussion deep link" do
+    content = <<~MD
+      ::: {.presentation}
+
+      # Opening
+
+      ---
+
+      # Table
+
+      | Decision |
+      | -------- |
+      | Review   |
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    html = Commonmarker.to_html(content, options: { render: { sourcepos: true } }, plugins: { syntax_highlighter: nil })
+    mapped = CoPlan::Plans::SourceTargets.new(content).annotate(Nokogiri::HTML.fragment(html))
+    cell = mapped.css("[data-source-target]").find { |node| node.text.include?("Review") }
+    token = JSON.parse(cell["data-source-target"])["token"]
+    thread = create(:comment_thread, plan: plan, created_by_user: user, source_token: token)
+    thread.comments.create!(author_type: "human", author_id: user.id, body_markdown: "Review this cell")
+
+    visit "#{plan_page_path(plan)}?thread=#{thread.id}"
+
+    expect(page).to have_css(".deck-slide--current[data-slide='2']")
+    expect(page).to have_css(".source-comments:popover-open", text: "Review this cell")
+  end
+
   it "marks changes in a later content region" do
     content = <<~MD
       # Opening

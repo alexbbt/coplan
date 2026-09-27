@@ -5,7 +5,8 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
     presentation_types = CoPlan::PlanType.where(behavior: "presentation")
     presentation_types.find_each do |type|
       template = type.template_content.to_s
-      metadata = type.metadata.to_h.merge(PRESENTATION_MARKER => { "template_content" => type.template_content })
+      metadata = type.metadata.to_h
+      metadata[PRESENTATION_MARKER] ||= { "template_content" => type.template_content }
       if template.blank? || CoPlan::ContentRegions::Split.call(template).regions.any? { |region| region.kind == :presentation }
         type.update_columns(metadata: metadata)
       else
