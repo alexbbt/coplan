@@ -3,18 +3,43 @@
 export function captureDeckPositions(root) {
   return Array.from(root.querySelectorAll(".deck-region"), region => ({
     id: region.id,
-    slide: Number(region.dataset.currentSlide || 1)
+    slide: Number(region.dataset.currentSlide || 1),
+    content: deckContent(region),
+    headings: deckHeadings(region)
   }))
 }
 
 export function restoreDeckPositions(root, positions) {
-  const byId = new Map(positions.filter(position => position.id).map(position => [position.id, position.slide]))
-  root.querySelectorAll(".deck-region").forEach((region, index) => {
+  const regions = Array.from(root.querySelectorAll(".deck-region"))
+  const used = new Set()
+  regions.forEach(region => {
     const slides = Array.from(region.querySelectorAll(":scope > .deck > .deck-slide"))
     if (!slides.length) return
-    const previous = byId.get(region.id) || positions[index]?.slide || 1
+    let match = positions.find((position, index) => region.id && position.id === region.id && !used.has(index))
+    if (!match && !region.id) {
+      const content = deckContent(region)
+      match = positions.find((position, index) => !position.id && position.content === content && !used.has(index))
+    }
+    if (!match && !region.id) {
+      const headings = deckHeadings(region)
+      const candidates = positions.filter((position, index) => !position.id && headings && position.headings === headings && !used.has(index))
+      const matchingNew = regions.filter(candidate => !candidate.id && deckHeadings(candidate) === headings)
+      if (candidates.length === 1 && matchingNew.length === 1) match = candidates[0]
+    }
+    if (match) used.add(positions.indexOf(match))
+    const previous = match?.slide || 1
     const current = Math.max(1, Math.min(previous, slides.length))
     region.dataset.currentSlide = String(current)
     slides.forEach((slide, slideIndex) => slide.classList.toggle("deck-slide--current", slideIndex === current - 1))
   })
+}
+
+function deckContent(region) {
+  return Array.from(region.querySelectorAll(":scope > .deck > .deck-slide"), slide =>
+    slide.textContent.replace(/\s+/g, " ").trim()).join("\0")
+}
+
+function deckHeadings(region) {
+  return Array.from(region.querySelectorAll(".deck-slide h1, .deck-slide h2, .deck-slide h3"), heading =>
+    heading.textContent.replace(/\s+/g, " ").trim()).join("\0")
 }

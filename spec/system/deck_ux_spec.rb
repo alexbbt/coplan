@@ -150,6 +150,59 @@ RSpec.describe "Deck UX", type: :system do
     expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true)
   end
 
+  it "keeps slide positions with their decks when id-less decks reorder" do
+    mixed = <<~MD
+      ::: {.presentation}
+
+      # Alpha one
+
+      ---
+
+      # Alpha two
+
+      :::
+
+      ::: {.presentation}
+
+      # Beta one
+
+      ---
+
+      # Beta two
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: mixed,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    all(".deck-region").first.find(".deck-toolbar__step--next").click
+    expect(all(".deck-region").first).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const decks = template.content.querySelectorAll(".deck-region")
+      decks[0].before(decks[1])
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    Selenium::WebDriver::Wait.new(timeout: 5).until do
+      page.evaluate_script(<<~JS)
+        (() => {
+          const [first, second] = document.querySelectorAll(".deck-region")
+          return first?.querySelector(".deck-slide--current")?.textContent.includes("Beta one") &&
+            second?.querySelector(".deck-slide--current")?.textContent.includes("Alpha two")
+        })()
+      JS
+    end
+  end
+
   it "keeps the reader's slide when the inline editor closes" do
     visit plan_page_path(plan)
     2.times { find(".deck-toolbar__step--next").click }
