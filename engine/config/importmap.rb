@@ -21,6 +21,7 @@ pin "prosemirror-markdown", to: "https://esm.sh/prosemirror-markdown@1.13.2?bund
 pin "coplan/rich_document", to: "coplan/rich_document.js", preload: false
 pin "coplan/viewport_anchor", to: "coplan/viewport_anchor.js", preload: false
 pin "coplan/content_sections", to: "coplan/content_sections.js", preload: false
+pin "coplan/deck_state", to: "coplan/deck_state.js", preload: false
 pin "diff", to: "https://esm.sh/diff@8.0.2?bundle", preload: false
 pin "coplan/merge_text", to: "coplan/merge_text.js", preload: false
 

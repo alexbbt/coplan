@@ -1,6 +1,7 @@
 import { Controller } from "@hotwired/stimulus"
 import { captureViewport, restoreViewport } from "coplan/viewport_anchor"
 import { renderedBlocks } from "coplan/content_sections"
+import { captureDeckPositions, restoreDeckPositions } from "coplan/deck_state"
 
 /*
  * coplan--live-update
@@ -98,19 +99,9 @@ export default class extends Controller {
 function applyContent(target, fragment, incomingRevision, changedKeys) {
   const viewport = captureViewport(target)
   const oldSections = snapshotSections(target, changedKeys)
-  const deckPositions = Array.from(target.querySelectorAll(".deck-region"), region => ({
-    id: region.id,
-    slide: Number(region.dataset.currentSlide || 1)
-  }))
+  const deckPositions = captureDeckPositions(target)
   target.replaceChildren(fragment)
-  const positionsById = new Map(deckPositions.filter(position => position.id).map(position => [position.id, position.slide]))
-  target.querySelectorAll(".deck-region").forEach((region, index) => {
-    const slides = Array.from(region.querySelectorAll(":scope > .deck > .deck-slide"))
-    const previous = positionsById.get(region.id) || deckPositions[index]?.slide || 1
-    const current = Math.max(1, Math.min(previous, slides.length))
-    region.dataset.currentSlide = String(current)
-    slides.forEach((slide, slideIndex) => slide.classList.toggle("deck-slide--current", slideIndex === current - 1))
-  })
+  restoreDeckPositions(target, deckPositions)
   if (incomingRevision) target.setAttribute("data-coplan--live-update-revision-value", String(incomingRevision))
   target.dispatchEvent(new CustomEvent("coplan:content-updated", { bubbles: true }))
   restoreViewport(target, viewport)

@@ -150,6 +150,20 @@ RSpec.describe "Deck UX", type: :system do
     expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true)
   end
 
+  it "keeps the reader's slide when the inline editor closes" do
+    visit plan_page_path(plan)
+    2.times { find(".deck-toolbar__step--next").click }
+    expect(page).to have_css(".deck-toolbar__count[data-count='3 / 4']")
+
+    within("#plan-toolbar") { click_link "Edit" }
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    find(".inline-editor").click_button "Done editing"
+
+    expect(page).to have_no_css(".inline-editor form.document-editor", wait: 10)
+    expect(page).to have_css(".deck-toolbar__count[data-count='3 / 4']")
+    expect(page).to have_css(".deck-slide--current[data-slide='3']", visible: true)
+  end
+
   it "reveals a hidden slide when its heading is selected in the outline" do
     visit plan_page_path(plan)
 
