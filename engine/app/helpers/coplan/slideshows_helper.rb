@@ -78,6 +78,7 @@ module CoPlan
           tag.div(class: "deck-presenter deck-region", id: region.id,
                   tabindex: 0, data: { controller: "coplan--deck-presenter coplan--deck-reader",
                     deck_number: deck_number,
+                    deck_source_digest: Digest::SHA256.hexdigest(region.source),
                     action: "click->coplan--deck-reader#focus keydown->coplan--deck-reader#keydown coplan:deck-slide->coplan--deck-reader#synced coplan:deck-reveal->coplan--deck-reader#reveal" }) do
             safe_join([
               tag.div(class: "deck-toolbar") do

@@ -3,5 +3,10 @@
 export function renderedBlocks(root) {
   const regions = root.matches?.(".markdown-rendered") ? [root] :
     Array.from(root.querySelectorAll(".markdown-rendered"))
-  return regions.flatMap(region => Array.from(region.children))
+  return regions.flatMap(region => logicalChildren(region))
+}
+
+function logicalChildren(parent) {
+  return Array.from(parent.children).flatMap(child =>
+    child.matches(".deck-body, .deck-media") ? logicalChildren(child) : [child])
 }

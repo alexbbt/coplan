@@ -4,7 +4,7 @@ export function captureDeckPositions(root) {
   return Array.from(root.querySelectorAll(".deck-region"), region => ({
     id: region.id,
     slide: Number(region.dataset.currentSlide || 1),
-    content: deckContent(region),
+    content: region.dataset.deckSourceDigest,
     headings: deckHeadings(region)
   }))
 }
@@ -17,7 +17,7 @@ export function restoreDeckPositions(root, positions) {
     if (!slides.length) return
     let match = positions.find((position, index) => region.id && position.id === region.id && !used.has(index))
     if (!match && !region.id) {
-      const content = deckContent(region)
+      const content = region.dataset.deckSourceDigest
       match = positions.find((position, index) => !position.id && position.content === content && !used.has(index))
     }
     if (!match && !region.id) {
@@ -32,11 +32,6 @@ export function restoreDeckPositions(root, positions) {
     region.dataset.currentSlide = String(current)
     slides.forEach((slide, slideIndex) => slide.classList.toggle("deck-slide--current", slideIndex === current - 1))
   })
-}
-
-function deckContent(region) {
-  return Array.from(region.querySelectorAll(":scope > .deck > .deck-slide"), slide =>
-    slide.textContent.replace(/\s+/g, " ").trim()).join("\0")
 }
 
 function deckHeadings(region) {

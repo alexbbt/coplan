@@ -203,6 +203,77 @@ RSpec.describe "Deck UX", type: :system do
     end
   end
 
+  it "keeps a heading-free deck position after its DOM changes" do
+    content = <<~MD
+      ::: {.presentation}
+
+      First narrative.
+
+      ---
+
+      ```mermaid
+      flowchart LR
+        A --> B
+      ```
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+    page.execute_script('document.querySelector(".deck-slide--current .markdown-rendered").innerHTML = "<div>Rendered diagram</div>"')
+
+    page.evaluate_async_script(<<~JS)
+      const done = arguments[0]
+      fetch("#{content_body_plan_path(plan)}", { headers: { Accept: "text/html" } })
+        .then(response => response.text())
+        .then(html => {
+          const stream = document.createElement("turbo-stream")
+          stream.setAttribute("action", "coplan-replace-if-clean")
+          stream.setAttribute("target", "plan-content-body")
+          stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+          const template = document.createElement("template")
+          template.innerHTML = html
+          stream.append(template)
+          document.body.append(stream)
+          done(true)
+        })
+    JS
+
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+    expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true)
+  end
+
+  it "marks a changed heading nested in a split slide" do
+    content = <<~MD
+      ::: {.presentation}
+
+      Opening words.
+
+      ## Results
+
+      Analysis body.
+
+      ![board](board.png)
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    expect(page).to have_css(".deck-slide--split .deck-body h2", text: "Results")
+    page.execute_script(<<~JS)
+      const layout = document.querySelector(".plan-layout")
+      layout.setAttribute("data-coplan--changed-sections-keys-value", '["results"]')
+      window.Stimulus.getControllerForElementAndIdentifier(layout, "coplan--changed-sections").connect()
+    JS
+
+    expect(page).to have_css(".deck-body h2.section-changed", text: "Results")
+    expect(page).to have_css(".deck-body p.section-changed", text: "Analysis body.")
+  end
+
   it "keeps the reader's slide when the inline editor closes" do
     visit plan_page_path(plan)
     2.times { find(".deck-toolbar__step--next").click }
