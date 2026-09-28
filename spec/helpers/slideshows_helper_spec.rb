@@ -17,6 +17,17 @@ RSpec.describe CoPlan::SlideshowsHelper, type: :helper do
       expect(doc.text.index("Between")).to be < doc.text.index("Third")
     end
 
+    it "keeps an explicit deck identity separate from heading fragment IDs" do
+      source = "[Read proposal](#proposal)\n\n::: {.presentation #proposal}\n\n# Proposal\n\n:::"
+      doc = Nokogiri::HTML::DocumentFragment.parse(helper.render_content_regions(source))
+
+      expect(doc.at_css(".deck-region")["data-deck-region-id"]).to eq("proposal")
+      expect(doc.at_css(".deck-region")["id"]).to be_nil
+      expect(doc.css("#proposal").size).to eq(1)
+      expect(doc.at_css("#proposal").ancestors(".deck-slide")).not_to be_empty
+      expect(doc.at_css('a[href="#proposal"]')).to be_present
+    end
+
     it "shares footnote numbering and link definitions across prose and decks" do
       source = <<~MD
         Prose[^a] and [source][link].

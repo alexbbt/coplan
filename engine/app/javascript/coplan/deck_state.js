@@ -2,7 +2,7 @@
 // across the replacement before Stimulus reconnects to the new regions.
 export function captureDeckPositions(root) {
   return Array.from(root.querySelectorAll(".deck-region"), region => ({
-    id: region.id,
+    id: region.dataset.deckRegionId,
     slide: Number(region.dataset.currentSlide || 1),
     content: region.dataset.deckSourceDigest,
     headings: deckHeadings(region)
@@ -20,22 +20,22 @@ export function restoreDeckPositions(root, positions) {
   }
 
   regions.forEach((region, index) => {
-    if (region.id) match(index, positions.findIndex((position, oldIndex) =>
-      position.id === region.id && !used.has(oldIndex)))
+    if (region.dataset.deckRegionId) match(index, positions.findIndex((position, oldIndex) =>
+      position.id === region.dataset.deckRegionId && !used.has(oldIndex)))
   })
   regions.forEach((region, index) => {
-    if (region.id || matches.has(index)) return
+    if (region.dataset.deckRegionId || matches.has(index)) return
     match(index, positions.findIndex((position, oldIndex) =>
       !position.id && position.content === region.dataset.deckSourceDigest && !used.has(oldIndex)))
   })
   regions.forEach((region, index) => {
-    if (region.id || matches.has(index)) return
+    if (region.dataset.deckRegionId || matches.has(index)) return
     const headings = deckHeadings(region)
     if (!headings) return
     const oldMatches = positions.map((position, oldIndex) =>
       !position.id && position.headings === headings && !used.has(oldIndex) ? oldIndex : -1).filter(oldIndex => oldIndex >= 0)
     const newMatches = regions.filter((candidate, newIndex) =>
-      !candidate.id && !matches.has(newIndex) && deckHeadings(candidate) === headings)
+      !candidate.dataset.deckRegionId && !matches.has(newIndex) && deckHeadings(candidate) === headings)
     if (oldMatches.length === 1 && newMatches.length === 1) match(index, oldMatches[0])
   })
 
@@ -45,7 +45,7 @@ export function restoreDeckPositions(root, positions) {
     const unmatchedOld = positions.map((position, index) => !used.has(index) ? index : -1).filter(index => index >= 0)
     const unmatchedNew = regions.map((region, index) => !matches.has(index) ? index : -1).filter(index => index >= 0)
     if (unmatchedOld.length === 1 && unmatchedNew.length === 1 &&
-        !positions[unmatchedOld[0]].id && !regions[unmatchedNew[0]].id) {
+        !positions[unmatchedOld[0]].id && !regions[unmatchedNew[0]].dataset.deckRegionId) {
       match(unmatchedNew[0], unmatchedOld[0])
     }
   }

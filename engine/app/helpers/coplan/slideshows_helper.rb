@@ -75,8 +75,9 @@ module CoPlan
           deck_number += 1
           deck = render_slideshow(region.source, interactive:, theme: region.theme, definitions: definitions,
                                   line_offset: region.start_line - 1, reconcile: false, retain_sourcepos: interactive)
-          tag.div(class: "deck-presenter deck-region", id: region.id,
+          tag.div(class: "deck-presenter deck-region",
                   tabindex: 0, data: { controller: "coplan--deck-presenter coplan--deck-reader",
+                    deck_region_id: region.id,
                     deck_number: deck_number,
                     deck_source_digest: Digest::SHA256.hexdigest(region.source),
                     action: "click->coplan--deck-reader#focus keydown->coplan--deck-reader#keydown coplan:deck-slide->coplan--deck-reader#synced coplan:deck-reveal->coplan--deck-reader#reveal" }) do

@@ -283,6 +283,41 @@ RSpec.describe "Deck UX", type: :system do
     expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
   end
 
+  it "keeps an explicitly named deck position when its source changes" do
+    content = <<~MD
+      ::: {.presentation #proposal}
+
+      # First slide
+
+      ---
+
+      # Second slide
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const deck = template.content.querySelector(".deck-region")
+      deck.dataset.deckSourceDigest = "edited-source-digest"
+      deck.querySelector(".deck-slide:last-child h1").textContent = "Revised second slide"
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(page).to have_css(".deck-region[data-deck-region-id='proposal'] .deck-slide--current[data-slide='2']", text: "Revised second slide")
+  end
+
   it "marks a changed heading nested in a split slide" do
     content = <<~MD
       ::: {.presentation}
@@ -350,6 +385,46 @@ RSpec.describe "Deck UX", type: :system do
         })()
       JS
     end
+  end
+
+  it "clears an old heading fragment after presenting another slide" do
+    visit "#{plan_page_path(plan)}#how-a-slide-finds-its-shape"
+    expect(page).to have_css(".deck-slide--current[data-slide='3']")
+
+    find(".deck-toolbar__present").click
+    send_keys(:arrow_right)
+    expect(page).to have_css(".deck--presenting .deck-slide--current[data-slide='4']")
+    send_keys(:escape)
+
+    expect(page).to have_css(".deck-slide--current[data-slide='4']", visible: true)
+    expect(page.evaluate_script("window.location.hash")).to eq("")
+  end
+
+  it "starts the deck named in a presentation resume URL" do
+    content = <<~MD
+      ::: {.presentation}
+
+      # First deck
+
+      :::
+
+      ::: {.presentation}
+
+      # Second deck, one
+
+      ---
+
+      # Second deck, two
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit "#{plan_page_path(plan)}#present-2-2"
+    send_keys("p")
+
+    expect(all(".deck-region").last).to have_css(".deck--presenting .deck-slide--current[data-slide='2']")
+    send_keys(:escape)
   end
 
   it "tracks the visible slide in the outline" do

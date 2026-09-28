@@ -136,6 +136,12 @@ export default class extends Controller {
     if (slides.length === 0) return this.stop()
 
     this.index = Math.max(0, Math.min(index, slides.length - 1))
+    if (this._priorHash) {
+      let id
+      try { id = decodeURIComponent(this._priorHash.slice(1)) } catch { id = null }
+      const targetSlide = id && document.getElementById(id)?.closest(".deck-slide")
+      if (targetSlide && this.element.contains(targetSlide) && targetSlide !== slides[this.index]) this._priorHash = ""
+    }
     this.element.dispatchEvent(new CustomEvent("coplan:deck-slide", { detail: { index: this.index } }))
     deck.classList.add("deck--presenting")
     this._promoteDeck()
@@ -209,12 +215,14 @@ export default class extends Controller {
     if (!this.presenting) {
       if (commandFor("deck", event) !== "start" || this._typing(event.target)) return
       const regions = Array.from(document.querySelectorAll(".deck-region"))
+      const resume = window.location.hash.match(/^#present-(\d+)-\d+$/)
+      const resumed = resume && regions.find(region => region.dataset.deckNumber === resume[1])
       const focused = document.activeElement?.closest?.(".deck-region")
       const visible = regions.find(region => {
         const box = region.getBoundingClientRect()
         return box.bottom > 0 && box.top < window.innerHeight
       })
-      if (this.element !== (focused || visible || regions[0])) return
+      if (this.element !== (resumed || focused || visible || regions[0])) return
       event.preventDefault()
       this.start()
       return
