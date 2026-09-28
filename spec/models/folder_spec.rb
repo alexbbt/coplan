@@ -48,29 +48,38 @@ RSpec.describe CoPlan::Folder, type: :model do
   end
 
   describe "depth limit" do
-    it "allows nesting up to MAX_DEPTH levels" do
-      root = create(:folder, name: "L1", created_by_user: user)
-      mid = create(:folder, name: "L2", parent: root, created_by_user: user)
-      expect(build(:folder, name: "L3", parent: mid, created_by_user: user)).to be_valid
+    let!(:chain) do
+      (1..described_class::MAX_DEPTH).reduce([]) do |folders, level|
+        folders << create(:folder, name: "L#{level}", parent: folders.last, created_by_user: user)
+      end
+    end
+
+    it "allows five folder levels" do
+      expect(chain.last.depth).to eq(5)
+      expect(chain.last.path).to eq("L1/L2/L3/L4/L5")
     end
 
     it "rejects nesting beyond MAX_DEPTH levels" do
-      root = create(:folder, name: "L1", created_by_user: user)
-      mid = create(:folder, name: "L2", parent: root, created_by_user: user)
-      leaf = create(:folder, name: "L3", parent: mid, created_by_user: user)
-      too_deep = build(:folder, name: "L4", parent: leaf, created_by_user: user)
+      too_deep = build(:folder, name: "Too deep", parent: chain.last, created_by_user: user)
       expect(too_deep).not_to be_valid
       expect(too_deep.errors[:parent].join).to include("maximum folder depth")
     end
 
-    it "rejects re-parenting a folder whose subtree would exceed MAX_DEPTH" do
-      root = create(:folder, name: "Root", created_by_user: user)
-      mid = create(:folder, name: "Mid", parent: root, created_by_user: user)
+    it "allows re-parenting a subtree ending at the limit but rejects one level deeper" do
       mover = create(:folder, name: "Mover", created_by_user: user)
-      create(:folder, name: "Child", parent: mover, created_by_user: user)
-      mover.parent = mid
-      expect(mover).not_to be_valid
+      child = create(:folder, name: "Child", parent: mover, created_by_user: user)
+
+      expect(mover.update(parent: chain[-3])).to be true
+      expect(child.reload.depth).to eq(5)
+      expect(mover.update(parent: chain[-2])).to be false
       expect(mover.errors[:parent].join).to include("maximum folder depth")
+      expect(mover.reload.parent).to eq(chain[-3])
+      expect(child.reload.parent).to eq(mover)
+    end
+
+    it "finds a five-segment slug path but rejects a sixth segment" do
+      expect(described_class.find_by_slug_path("l1/l2/l3/l4/l5", library: library)).to eq(chain.last)
+      expect(described_class.find_by_slug_path("l1/l2/l3/l4/l5/l6", library: library)).to be_nil
     end
   end
 
@@ -179,13 +188,13 @@ RSpec.describe CoPlan::Folder, type: :model do
 
     it "raises when the path exceeds MAX_DEPTH" do
       expect {
-        described_class.find_or_create_by_path!("A/B/C/D", library: library, created_by_user: user)
+        described_class.find_or_create_by_path!("A/B/C/D/E/F", library: library, created_by_user: user)
       }.to raise_error(ActiveRecord::RecordInvalid, /maximum folder depth/)
     end
 
     it "creates nothing when the path is too deep (transactional)" do
       expect {
-        described_class.find_or_create_by_path!("A/B/C/D", library: library, created_by_user: user)
+        described_class.find_or_create_by_path!("A/B/C/D/E/F", library: library, created_by_user: user)
       }.to raise_error(ActiveRecord::RecordInvalid)
       expect(described_class.count).to eq(0)
     end

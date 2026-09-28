@@ -6159,11 +6159,11 @@ img.avatar {
 }
 
 .folder-tree--nested {
-  padding-left: var(--space-md);
+  padding-left: var(--space-sm);
 }
 
 /* The rooted tree: "My Plans" is the drive root; folders hang off it with
-   a slightly tighter indent than regular nesting. */
+   the same compact indent as regular nesting. */
 .folder-tree__node--root > .folder-tree--nested {
   padding-left: var(--space-sm);
   margin-top: 1px;

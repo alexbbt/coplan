@@ -11,7 +11,7 @@ module CoPlan
   class Folder < ApplicationRecord
     include BroadcastsLibraryChanges
 
-    MAX_DEPTH = 3
+    MAX_DEPTH = 5
 
     # "/" is reserved as the path separator for folder_path lookups
     # (e.g. "Team EBT/Q3"), so it can't appear in a folder name.
@@ -134,7 +134,7 @@ module CoPlan
       segments = path.to_s.split("/").map(&:strip).reject(&:blank?)
       return nil if segments.empty?
 
-      # Transactional so a failure partway (e.g. "A/B/C/D" exceeding
+      # Transactional so a failure partway (e.g. "A/B/C/D/E/F" exceeding
       # MAX_DEPTH) doesn't leave half-created hierarchy behind.
       transaction do
         segments.reduce(nil) do |parent, name|

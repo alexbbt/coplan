@@ -35,13 +35,17 @@ RSpec.describe "Api::V1::Plans", type: :request do
   # Reached through the associations that's several queries per plan on a
   # list agents page through, so the location is preloaded.
   it "reads each plan's location once for the whole index, not once per plan" do
-    folder = create(:folder, name: "LiveOrder", created_by_user: alice)
-    nested = create(:folder, name: "Q3", parent: folder, created_by_user: alice)
+    file_plans = lambda do |count, prefix|
+      count.times do |i|
+        folder = CoPlan::Folder.find_or_create_by_path!("#{prefix} #{i}/Q3/Android/Rollout/Retro", library: alice.library)
+        CoPlan::Plans::Place.call(plan: create(:plan, :considering, created_by_user: alice, title: "#{prefix} #{i}"), folder: folder, actor: alice)
+      end
+    end
 
-    3.times { |i| CoPlan::Plans::Place.call(plan: create(:plan, :considering, created_by_user: alice, title: "Roadmap #{i}"), folder: nested, actor: alice) }
+    file_plans.call(3, "Roadmap")
     few = index_queries_touching(/coplan_(plan_placements|folders|libraries)/)
 
-    27.times { |i| CoPlan::Plans::Place.call(plan: create(:plan, :considering, created_by_user: alice, title: "Later #{i}"), folder: folder, actor: alice) }
+    file_plans.call(27, "Later")
     many = index_queries_touching(/coplan_(plan_placements|folders|libraries)/)
 
     body = JSON.parse(response.body)
@@ -49,7 +53,9 @@ RSpec.describe "Api::V1::Plans", type: :request do
     # The preload has to be right, not just cheap — thirty distinct addresses,
     # each naming the folder the plan is actually in.
     expect(body.map { |p| p["url"] }.uniq.size).to eq(30)
-    expect(body.map { |p| p["folder_path"] }.tally).to eq("LiveOrder/Q3" => 3, "LiveOrder" => 27)
+    expected_paths = (0...3).map { |i| "Roadmap #{i}/Q3/Android/Rollout/Retro" } +
+      (0...27).map { |i| "Later #{i}/Q3/Android/Rollout/Retro" }
+    expect(body.map { |p| p["folder_path"] }).to match_array(expected_paths)
     expect(many).to eq(few)
   end
 
@@ -186,14 +192,22 @@ RSpec.describe "Api::V1::Plans", type: :request do
 
   describe "filing on create" do
     it "files the plan via folder_path, creating the hierarchy in the caller's library" do
-      post api_v1_plans_path, params: { title: "Filed Plan", content: "# Filed", folder_path: "Team EBT/Q3" }, headers: headers, as: :json
+      post api_v1_plans_path, params: { title: "Filed Plan", content: "# Filed", folder_path: "Team EBT/Q3/Android/Rollout/Retro" }, headers: headers, as: :json
       expect(response).to have_http_status(:created)
       body = JSON.parse(response.body)
-      expect(body["folder_path"]).to eq("Team EBT/Q3")
+      expect(body["folder_path"]).to eq("Team EBT/Q3/Android/Rollout/Retro")
 
       placement = alice.library.placements.find_by(plan_id: body.fetch("id"))
-      expect(placement.folder.path).to eq("Team EBT/Q3")
-      expect(alice.library.folders.count).to eq(2)
+      expect(placement.folder.path).to eq("Team EBT/Q3/Android/Rollout/Retro")
+      expect(alice.library.folders.count).to eq(5)
+    end
+
+    it "rolls back a create with a sixth folder level" do
+      expect {
+        post api_v1_plans_path, params: { title: "Too deep", content: "# Plan", folder_path: "A/B/C/D/E/F" }, headers: headers, as: :json
+      }.not_to change(CoPlan::Plan, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(alice.library.folders).to be_empty
     end
 
     it "files the plan via folder_id" do
@@ -456,8 +470,13 @@ RSpec.describe "Api::V1::Plans", type: :request do
       end
 
       it "rejects a folder_path deeper than the max depth" do
-        patch api_v1_plan_path(plan), params: { folder_path: "A/B/C/D" }, headers: headers, as: :json
+        original_title = plan.title
+        expect {
+          patch api_v1_plan_path(plan), params: { title: "Too deep", folder_path: "A/B/C/D/E/F" }, headers: headers, as: :json
+        }.not_to change(CoPlan::Folder, :count)
         expect(response).to have_http_status(:unprocessable_content)
+        expect(plan.reload.title).to eq(original_title)
+        expect(alice_placement).to be_nil
       end
 
       it "does not log an event when the folder is unchanged" do

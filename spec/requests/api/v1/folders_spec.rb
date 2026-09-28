@@ -83,6 +83,21 @@ RSpec.describe "Api::V1::Folders", type: :request do
       expect(JSON.parse(response.body)["path"]).to eq("Infra/Q3")
     end
 
+    it "creates fourth and fifth levels but rejects a sixth" do
+      parent = CoPlan::Folder.find_or_create_by_path!("Features/Feature/Android", library: alice.library)
+      %w[Rollout Retro].each do |name|
+        post api_v1_folders_path, params: { name: name, parent_id: parent.id }, headers: headers, as: :json
+        expect(response).to have_http_status(:created)
+        parent = CoPlan::Folder.find(response.parsed_body.fetch("id"))
+      end
+      expect(parent.depth).to eq(5)
+      expect {
+        post api_v1_folders_path, params: { name: "Too deep", parent_id: parent.id }, headers: headers, as: :json
+      }.not_to change(CoPlan::Folder, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["error"]).to include("maximum folder depth of 5")
+    end
+
     it "rejects an unknown parent_id" do
       post api_v1_folders_path, params: { name: "Q3", parent_id: "nope" }.to_json,
         headers: headers.merge("Content-Type" => "application/json")

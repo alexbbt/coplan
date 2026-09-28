@@ -1,12 +1,19 @@
 require "rails_helper"
 
 RSpec.describe "Agent Instructions", type: :request do
+  it "advertises the five-level cap in the organizing guide" do
+    get agent_instructions_organizing_path
+    expect(response).to have_http_status(:success)
+    expect(response.body).to include("at most 5 levels deep", "The depth cap is 5")
+  end
+
   describe "GET /agent-instructions" do
     it "returns markdown content" do
       get agent_instructions_path
       expect(response).to have_http_status(:success)
       expect(response.content_type).to include("text/markdown")
       expect(response.body).to include("# CoPlan API")
+      expect(response.body).to include("max 5 levels deep")
       expect(response.body).to include("```mermaid")
     end
 
