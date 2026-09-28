@@ -79,6 +79,18 @@ RSpec.describe "Deck UX", type: :system do
     )
   end
 
+  it "disables slide steps at each deck boundary" do
+    visit plan_page_path(plan)
+
+    expect(page).to have_css(".deck-toolbar__step--previous:disabled")
+    expect(page).to have_css(".deck-toolbar__step--next:not(:disabled)")
+    3.times { find(".deck-toolbar__step--next").click }
+
+    expect(page).to have_css(".deck-toolbar__count[data-count='4 / 4']")
+    expect(page).to have_css(".deck-toolbar__step--next:disabled")
+    expect(page).to have_css(".deck-toolbar__step--previous:not(:disabled)")
+  end
+
   it "reads and presents each embedded deck independently" do
     mixed = <<~MD
       Introductory context.
