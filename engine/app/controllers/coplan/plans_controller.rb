@@ -367,19 +367,17 @@ module CoPlan
       end
     end
 
-    # Archiving happens in place: the banner appears (with Restore — the
-    # undo), the toolbar's menu loses its Archive entry, and a toast
-    # confirms. No navigation, so the consequence is visible right where
-    # the action happened.
+    # An archived plan leaves its current listing, so return to the folder
+    # that contained it (or the library root when it was unfiled).
     def archive
       authorize!(@plan, :archive?)
       @plan.update!(archived_at: Time.current)
       broadcast_plan_update(@plan)
       Plans::LogEvent.call(plan: @plan, actor: current_user, event_type: "archived")
-      respond_to do |format|
-        format.turbo_stream { render turbo_stream: archive_streams("Archived — hidden from lists, still readable at this URL.") }
-        format.html { redirect_to helpers.plan_browse_path(@plan), notice: "Plan archived. It's hidden from lists unless someone filters for archived plans." }
-      end
+      destination = @plan.folder || @plan.library
+      flash[:archive_undo_plan_id] = @plan.id
+      flash[:archive_undo_plan_title] = @plan.title
+      redirect_to helpers.browse_path_for(destination), status: :see_other
     end
 
     def unarchive
@@ -387,8 +385,13 @@ module CoPlan
       @plan.update!(archived_at: nil)
       broadcast_plan_update(@plan)
       Plans::LogEvent.call(plan: @plan, actor: current_user, event_type: "unarchived")
+      if params[:return_to_home].present?
+        destination = @plan.folder || @plan.library
+        redirect_to helpers.browse_path_for(destination), status: :see_other, notice: "Plan restored."
+        return
+      end
       respond_to do |format|
-        format.turbo_stream { render turbo_stream: archive_streams("Plan restored.") }
+        format.turbo_stream { render turbo_stream: restore_streams("Plan restored.") }
         format.html { redirect_to helpers.plan_browse_path(@plan), notice: "Plan restored." }
       end
     end
@@ -817,11 +820,9 @@ module CoPlan
       ]
     end
 
-    # Turbo Streams for archive/restore: the banner slot is the loud,
-    # visible consequence (it appears with a Restore button — the undo),
-    # the header's byline picks up/drops the Archived flag, and the
-    # toolbar re-renders so its menu tracks the new state.
-    def archive_streams(message)
+    # A direct restore stays on the plan page: clear the archived banner,
+    # update the byline and location link, and restore the toolbar action.
+    def restore_streams(message)
       [
         turbo_stream.replace("plan-header", partial: "coplan/plans/header", locals: { plan: @plan }),
         turbo_stream.replace("plan-nav-context", partial: "coplan/plans/nav_context", locals: { plan: @plan }),

@@ -90,6 +90,27 @@ RSpec.describe "Plans", type: :request do
     expect(response.body).not_to include("plan-location-link")
   end
 
+  describe "archiving a plan" do
+    it "redirects a Turbo submission to its containing folder" do
+      folder = create(:folder, created_by_user: alice)
+      CoPlan::Plans::Place.call(plan: plan, folder: folder, actor: alice)
+
+      patch archive_plan_path(plan), headers: { "Accept" => "text/vnd.turbo-stream.html" }
+
+      expect(response).to have_http_status(:see_other)
+      expect(response).to redirect_to(browse_path(handle: alice.library.handle, slug_path: folder.slug_path))
+      expect(plan.reload).to be_archived
+    end
+
+    it "redirects an HTML submission to the library root when unfiled" do
+      patch archive_plan_path(plan)
+
+      expect(response).to have_http_status(:see_other)
+      expect(response).to redirect_to(browse_library_path(handle: alice.library.handle))
+      expect(plan.reload).to be_archived
+    end
+  end
+
   it "scopes comment footnote ids so they can't collide with the plan body's" do
     thread = create(:comment_thread, :with_anchor, plan: plan, plan_version: plan.current_plan_version, created_by_user: alice)
     comment = create(:comment, comment_thread: thread, author_type: "human", author_id: alice.id,

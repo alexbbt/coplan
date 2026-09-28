@@ -336,21 +336,29 @@ RSpec.describe "Human plan editing", type: :system do
     expect(plan.reload.visibility).to eq("draft")
   end
 
-  it "archives and restores the plan in place" do
+  it "returns to the library root after archiving an unfiled plan" do
     visit plan_page_path(plan)
     expect(page).to have_css(".plan-location-link--nav", visible: :all)
 
     open_plan_menu
     within("#plan-menu") { click_button "Archive plan" }
 
-    # The consequence is visible right where it happened: a banner with the
-    # undo, no navigation away from the document.
-    expect(page).to have_css(".plan-banner--archived", text: "hidden from lists")
-    expect(page).to have_content("Editable Plan")
-    expect(page).not_to have_css(".plan-location-link", visible: :all)
+    expect(page).to have_current_path(browse_library_path(handle: author.library.handle))
+    expect(page).to have_css(".archive-confirmation", text: "Archived “Editable Plan”")
+    expect(page).to have_link("View archived", href: browse_library_path(handle: author.library.handle, filter: "archived"))
+    expect(page).not_to have_css(".plan-row[data-plan-id='#{plan.id}']")
     expect(plan.reload.archived?).to be(true)
 
-    # Archive leaves the menu while archived.
+    within(".archive-confirmation") { click_button "Undo archive" }
+    expect(page).to have_current_path(browse_library_path(handle: author.library.handle))
+    expect(page).to have_css(".plan-row[data-plan-id='#{plan.id}']")
+    expect(plan.reload.archived?).to be(false)
+
+    # The archived document remains reachable directly and can be restored.
+    plan.update!(archived_at: Time.current)
+    visit plan_page_path(plan)
+    expect(page).to have_css(".plan-banner--archived", text: "hidden from lists")
+    expect(page).not_to have_css(".plan-location-link", visible: :all)
     open_plan_menu
     expect(page).not_to have_button("Archive plan")
     find("#plan-toolbar button[aria-label='More actions']").click # close menu
