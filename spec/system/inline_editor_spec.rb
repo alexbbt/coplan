@@ -520,8 +520,10 @@ RSpec.describe "Inline plan editing", type: :system do
       base_revision: plan.current_revision, actor_type: "local_agent", actor_id: author.id)
 
     expect(page).to have_css("#plan-content-body", text: "A remote addition above the reader.", wait: 10)
-    after = page.evaluate_script("Array.from(document.querySelectorAll('#plan-content-body p')).find(p => p.textContent.startsWith('Main paragraph 40'))?.getBoundingClientRect().top")
-    expect(after).to be_within(24).of(before)
+    Selenium::WebDriver::Wait.new(timeout: 5).until do
+      after = page.evaluate_script("Array.from(document.querySelectorAll('#plan-content-body p')).find(p => p.textContent.startsWith('Main paragraph 40'))?.getBoundingClientRect().top")
+      after && (after - before).abs <= 24
+    end
     expect(page).to have_css(".content-nav__item--remote-change[data-heading-id='introduction']")
     expect(page).to have_css("#plan-content-body mark[data-thread-id='comment_thread_#{thread.id}']", text: "Main paragraph 40", wait: 10)
   end

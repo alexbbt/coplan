@@ -7,7 +7,7 @@ require "rails_helper"
 # the back-matter links jumping in place instead of refetching the page.
 RSpec.describe "Deck UX", type: :system do
   let(:user) { create(:coplan_user, email: "presenter@example.com") }
-  let(:deck_type) { create(:plan_type, name: "Presentation", behavior: "presentation") }
+  let(:deck_type) { create(:plan_type, name: "Deck UX Presentation") }
 
   let(:deck_content) do
     <<~MARKDOWN
@@ -45,7 +45,7 @@ RSpec.describe "Deck UX", type: :system do
     p = create(:plan, :published, created_by_user: user, plan_type: deck_type, title: "Readout deck")
     version = CoPlan::PlanVersion.create!(
       plan: p, revision: 2,
-      content_markdown: deck_content, actor_type: "human", actor_id: user.id
+      content_markdown: "::: {.presentation}\n\n#{deck_content}\n:::", actor_type: "human", actor_id: user.id
     )
     p.update!(current_plan_version: version, current_revision: 2)
     p
@@ -77,6 +77,580 @@ RSpec.describe "Deck UX", type: :system do
     page.evaluate_script(
       %{document.querySelector(".deck-slide--current")?.dataset.slide}
     )
+  end
+
+  it "disables slide steps at each deck boundary" do
+    visit plan_page_path(plan)
+
+    expect(page).to have_css(".deck-toolbar__step--previous:disabled")
+    expect(page).to have_css(".deck-toolbar__step--next:not(:disabled)")
+    3.times { find(".deck-toolbar__step--next").click }
+
+    expect(page).to have_css(".deck-toolbar__count[data-count='4 / 4']")
+    expect(page).to have_css(".deck-toolbar__step--next:disabled")
+    expect(page).to have_css(".deck-toolbar__step--previous:not(:disabled)")
+  end
+
+  it "reads and presents each embedded deck independently" do
+    mixed = <<~MD
+      Introductory context.
+
+      ::: {.presentation}
+
+      # First deck, one
+
+      ---
+
+      # First deck, two
+
+      :::
+
+      Between the proposals.
+
+      ::: {.presentation}
+
+      # Second deck, one
+
+      ---
+
+      # Second deck, two
+
+      :::
+
+      Closing analysis.
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: mixed,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+
+    expect(page).to have_css(".deck-region", count: 2)
+    first_deck, second_deck = all(".deck-region")
+    first_deck.find(".deck-toolbar__step--next").click
+    expect(first_deck.find(".deck-toolbar__count")["data-count"]).to eq("2 / 2")
+    expect(second_deck.find(".deck-toolbar__count")["data-count"]).to eq("1 / 2")
+    second_deck.find(".deck-toolbar__present").click
+    expect(second_deck).to have_css(".deck--presenting .deck-slide--current[data-slide='1']")
+    send_keys(:escape)
+    expect(second_deck).to have_css(".deck-slide--current[data-slide='1']", visible: true)
+    second_deck.click
+    send_keys(:arrow_right)
+    expect(second_deck.find(".deck-toolbar__count")["data-count"]).to eq("2 / 2")
+    expect(first_deck.find(".deck-toolbar__count")["data-count"]).to eq("2 / 2")
+    send_keys("p")
+    expect(second_deck).to have_css(".deck--presenting .deck-slide--current[data-slide='2']")
+    send_keys(:escape)
+  end
+
+  it "keeps the reader's slide when live content replaces the document" do
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 4']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 4']")
+    expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true)
+  end
+
+  it "keeps slide positions with their decks when id-less decks reorder" do
+    mixed = <<~MD
+      ::: {.presentation}
+
+      # Alpha one
+
+      ---
+
+      # Alpha two
+
+      :::
+
+      ::: {.presentation}
+
+      # Beta one
+
+      ---
+
+      # Beta two
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: mixed,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    all(".deck-region").first.find(".deck-toolbar__step--next").click
+    expect(all(".deck-region").first).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const decks = template.content.querySelectorAll(".deck-region")
+      decks[0].before(decks[1])
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    Selenium::WebDriver::Wait.new(timeout: 5).until do
+      page.evaluate_script(<<~JS)
+        (() => {
+          const [first, second] = document.querySelectorAll(".deck-region")
+          return first?.querySelector(".deck-slide--current")?.textContent.includes("Beta one") &&
+            second?.querySelector(".deck-slide--current")?.textContent.includes("Alpha two")
+        })()
+      JS
+    end
+  end
+
+  it "starts a replacement id-less deck on its first slide" do
+    mixed = <<~MD
+      ::: {.presentation}
+
+      # Alpha one
+
+      ---
+
+      # Alpha two
+
+      ---
+
+      # Alpha three
+
+      :::
+
+      ::: {.presentation}
+
+      # Beta one
+
+      ---
+
+      # Beta two
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: mixed,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    2.times { all(".deck-region").first.find(".deck-toolbar__step--next").click }
+    expect(all(".deck-region").first).to have_css(".deck-toolbar__count[data-count='3 / 3']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const replacement = template.content.querySelector(".deck-region")
+      replacement.dataset.deckSourceDigest = "replacement-deck"
+      replacement.querySelectorAll(".deck-slide h1").forEach((heading, index) => {
+        heading.textContent = `Gamma ${index + 1}`
+      })
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(all(".deck-region").first).to have_css(".deck-toolbar__count[data-count='1 / 3']")
+    expect(all(".deck-region").first).to have_css(".deck-slide--current", text: "Gamma 1")
+    expect(all(".deck-region").last).to have_css(".deck-toolbar__count[data-count='1 / 2']")
+  end
+
+  it "keeps a heading-free deck position after its DOM changes" do
+    content = <<~MD
+      ::: {.presentation}
+
+      First narrative.
+
+      ---
+
+      ```mermaid
+      flowchart LR
+        A --> B
+      ```
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+    page.execute_script('document.querySelector(".deck-slide--current .markdown-rendered").innerHTML = "<div>Rendered diagram</div>"')
+
+    page.evaluate_async_script(<<~JS)
+      const done = arguments[0]
+      fetch("#{content_body_plan_path(plan)}", { headers: { Accept: "text/html" } })
+        .then(response => response.text())
+        .then(html => {
+          const stream = document.createElement("turbo-stream")
+          stream.setAttribute("action", "coplan-replace-if-clean")
+          stream.setAttribute("target", "plan-content-body")
+          stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+          const template = document.createElement("template")
+          template.innerHTML = html
+          stream.append(template)
+          document.body.append(stream)
+          done(true)
+        })
+    JS
+
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+    expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true)
+  end
+
+  it "keeps a heading-free deck position when its source changes" do
+    content = <<~MD
+      ::: {.presentation}
+
+      First narrative.
+
+      ---
+
+      Second narrative.
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const deck = template.content.querySelector(".deck-region")
+      deck.dataset.deckSourceDigest = "edited-source-digest"
+      deck.querySelector(".deck-slide:last-child").innerHTML = "<p>Edited second narrative.</p>"
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true, text: "Edited second narrative.")
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+  end
+
+  it "keeps an explicitly named deck position when its source changes" do
+    content = <<~MD
+      ::: {.presentation #proposal}
+
+      # First slide
+
+      ---
+
+      # Second slide
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const deck = template.content.querySelector(".deck-region")
+      deck.dataset.deckSourceDigest = "edited-source-digest"
+      deck.querySelector(".deck-slide:last-child h1").textContent = "Revised second slide"
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(page).to have_css(".deck-region[data-deck-region-id='proposal'] .deck-slide--current[data-slide='2']", text: "Revised second slide")
+  end
+
+  it "marks a changed heading nested in a split slide" do
+    content = <<~MD
+      ::: {.presentation}
+
+      Opening words.
+
+      ## Results
+
+      Analysis body.
+
+      ![board](board.png)
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    expect(page).to have_css(".deck-slide--split .deck-body h2", text: "Results")
+    page.execute_script(<<~JS)
+      const layout = document.querySelector(".plan-layout")
+      layout.setAttribute("data-coplan--changed-sections-keys-value", '["results"]')
+      window.Stimulus.getControllerForElementAndIdentifier(layout, "coplan--changed-sections").connect()
+    JS
+
+    expect(page).to have_css(".deck-body h2.section-changed", text: "Results")
+    expect(page).to have_css(".deck-body p.section-changed", text: "Analysis body.")
+  end
+
+  it "keeps the reader's slide when the inline editor closes" do
+    visit plan_page_path(plan)
+    2.times { find(".deck-toolbar__step--next").click }
+    expect(page).to have_css(".deck-toolbar__count[data-count='3 / 4']")
+
+    within("#plan-toolbar") { click_link "Edit" }
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    find(".inline-editor").click_button "Done editing"
+
+    expect(page).to have_no_css(".inline-editor form.document-editor", wait: 10)
+    expect(page).to have_css(".deck-toolbar__count[data-count='3 / 4']")
+    expect(page).to have_css(".deck-slide--current[data-slide='3']", visible: true)
+  end
+
+  it "ignores the presentation shortcut while the inline editor hides the reader" do
+    visit plan_page_path(plan)
+    within("#plan-toolbar") { click_link "Edit" }
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    find(".inline-editor button[aria-label='Done editing']").send_keys("p")
+
+    expect(page).to have_no_css(".deck--presenting", visible: :all)
+    expect(page.evaluate_script("window.location.hash")).not_to match(/^#present-/)
+    expect(page.evaluate_script("document.documentElement.style.overflow")).not_to eq("hidden")
+  end
+
+  it "reveals a hidden slide when its heading is selected in the outline" do
+    visit plan_page_path(plan)
+
+    expect(page).to have_css(".deck-region .deck-slide--current[data-slide='1']")
+    find(".content-nav__link", text: "How a slide finds its shape").click
+
+    expect(page).to have_css(".deck-region .deck-slide--current[data-slide='3']")
+    expect(find(".deck-toolbar__count")["data-count"]).to eq("3 / 4")
+  end
+
+  it "reveals a hidden slide targeted by a direct link" do
+    content = ("Long introduction.\n\n" * 40) + "::: {.presentation}\n\n#{deck_content}\n:::"
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit "#{plan_page_path(plan)}#how-a-slide-finds-its-shape"
+
+    expect(page).to have_css(".deck-region .deck-slide--current[data-slide='3']")
+    Selenium::WebDriver::Wait.new(timeout: 5).until do
+      page.evaluate_script(<<~JS)
+        (() => {
+          const top = document.getElementById("how-a-slide-finds-its-shape").getBoundingClientRect().top
+          return top >= -20 && top < window.innerHeight
+        })()
+      JS
+    end
+  end
+
+  it "clears an old heading fragment after presenting another slide" do
+    visit "#{plan_page_path(plan)}#how-a-slide-finds-its-shape"
+    expect(page).to have_css(".deck-slide--current[data-slide='3']")
+
+    find(".deck-toolbar__present").click
+    send_keys(:arrow_right)
+    expect(page).to have_css(".deck--presenting .deck-slide--current[data-slide='4']")
+    send_keys(:escape)
+
+    expect(page).to have_css(".deck-slide--current[data-slide='4']", visible: true)
+    expect(page.evaluate_script("window.location.hash")).to eq("")
+  end
+
+  it "starts the deck named in a presentation resume URL" do
+    content = <<~MD
+      ::: {.presentation}
+
+      # First deck
+
+      :::
+
+      ::: {.presentation}
+
+      # Second deck, one
+
+      ---
+
+      # Second deck, two
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit "#{plan_page_path(plan)}#present-2-2"
+    send_keys("p")
+
+    expect(all(".deck-region").last).to have_css(".deck--presenting .deck-slide--current[data-slide='2']")
+    send_keys(:escape)
+  end
+
+  it "tracks the visible slide in the outline" do
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+
+    expect(page).to have_css(".deck-slide--current[data-slide='2']")
+    expect(page).to have_css(".content-nav__item[data-heading-id='what-the-classifier-sees'] .content-nav__link--active")
+    expect(page).not_to have_css(".content-nav__item[data-heading-id='before-the-readout'] .content-nav__link--active")
+  end
+
+  it "reveals a hidden slide before opening its structural comment" do
+    visit plan_page_path(plan)
+    page.execute_script(<<~JS)
+      const slide = document.querySelector('.deck-slide[data-slide="3"]')
+      const badge = document.createElement("mark")
+      badge.className = "anchor-highlight anchor-highlight--open"
+      badge.dataset.threadId = "structural-thread"
+      badge.setAttribute("data-source-badge", "")
+      badge.addEventListener("coplan:source-thread", event => {
+        window.__sourceDispatched = true
+        event.stopPropagation()
+      })
+      slide.append(badge)
+      const thread = document.createElement("div")
+      thread.id = "structural-thread"
+      thread.dataset.threadId = "structural-thread"
+      document.body.append(thread)
+      const nav = document.querySelector('[data-controller~="coplan--comment-nav"]')
+      window.Stimulus.getControllerForElementAndIdentifier(nav, "coplan--comment-nav").navigateTo(badge)
+    JS
+
+    expect(page).to have_css(".deck-slide--current[data-slide='3']")
+    expect(page.evaluate_script("window.__sourceDispatched")).to eq(true)
+  end
+
+  it "reveals a hidden slide for a structural discussion deep link" do
+    content = <<~MD
+      ::: {.presentation}
+
+      # Opening
+
+      ---
+
+      # Table
+
+      | Decision |
+      | -------- |
+      | Review   |
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    html = Commonmarker.to_html(content, options: { render: { sourcepos: true } }, plugins: { syntax_highlighter: nil })
+    mapped = CoPlan::Plans::SourceTargets.new(content).annotate(Nokogiri::HTML.fragment(html))
+    cell = mapped.css("[data-source-target]").find { |node| node.text.include?("Review") }
+    token = JSON.parse(cell["data-source-target"])["token"]
+    thread = create(:comment_thread, plan: plan, created_by_user: user, source_token: token)
+    thread.comments.create!(author_type: "human", author_id: user.id, body_markdown: "Review this cell")
+
+    visit "#{plan_page_path(plan)}?thread=#{thread.id}"
+
+    expect(page).to have_css(".deck-slide--current[data-slide='2']")
+    expect(page).to have_css(".source-comments:popover-open", text: "Review this cell")
+  end
+
+  it "marks changes in a later content region" do
+    content = <<~MD
+      # Opening
+
+      Unchanged introduction.
+
+      ::: {.presentation}
+
+      # First slide
+
+      Unchanged slide.
+
+      :::
+
+      # Closing
+
+      Fresh closing text.
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    page.execute_script(<<~JS)
+      const layout = document.querySelector(".plan-layout")
+      layout.setAttribute("data-coplan--changed-sections-keys-value", '["closing"]')
+      const controller = window.Stimulus?.getControllerForElementAndIdentifier(layout, "coplan--changed-sections")
+      controller?.connect()
+    JS
+    expect(page).to have_css(".markdown-rendered .section-changed", text: "Fresh closing text.")
+  end
+
+  it "keeps changed section bands out of discussion bodies" do
+    content = "# Closing\n\nFresh closing text."
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    thread = create(:comment_thread, plan: plan, created_by_user: user)
+    create(:comment, comment_thread: thread, author_id: user.id, body_markdown: "Unchanged discussion text.")
+    visit plan_page_path(plan)
+    page.execute_script(<<~JS)
+      const layout = document.querySelector(".plan-layout")
+      layout.setAttribute("data-coplan--changed-sections-keys-value", '["closing"]')
+      window.Stimulus.getControllerForElementAndIdentifier(layout, "coplan--changed-sections").connect()
+    JS
+
+    expect(page).to have_css("#plan-content-body p.section-changed--end", text: "Fresh closing text.")
+    expect(page).to have_no_css("#plan-threads .section-changed", visible: :all)
+  end
+
+  it "flashes a live change in a later content region" do
+    content = <<~MD
+      # Opening
+
+      Unchanged introduction.
+
+      ::: {.presentation}
+
+      # Slide
+
+      Unchanged slide.
+
+      :::
+
+      # Closing
+
+      Old closing text.
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      stream.setAttribute("data-changed-sections", JSON.stringify({keys: ["closing"]}))
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML.replace("Old closing text.", "New closing text.")
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(page).to have_css(".markdown-rendered .agent-flash-block, .markdown-rendered .agent-flash", text: /New closing text\.|New/)
   end
 
   it "opens help above a presentation without navigating the slide behind it" do
@@ -120,7 +694,7 @@ RSpec.describe "Deck UX", type: :system do
   # present already wait explicitly for the same reason.)
   def start_show
     expect(page).to have_css(".deck-slide", wait: 10)
-    click_button "Present"
+    find(".deck-toolbar__present").click
     expect(page).to have_css(".deck--presenting .deck-slide--current", wait: 5)
   end
 
@@ -331,6 +905,7 @@ RSpec.describe "Deck UX", type: :system do
   describe "Mermaid diagrams on a slide" do
     it "keeps the expand control chip-sized instead of scaling it to the canvas" do
       visit plan_page_path(plan)
+      2.times { find(".deck-toolbar__step--next").click }
       expect(page).to have_css(".deck-slide .mermaid-diagram__canvas > svg", wait: 15)
 
       sizes = page.evaluate_script(<<~JS)
@@ -353,6 +928,7 @@ RSpec.describe "Deck UX", type: :system do
     # diagram still looks fine unsized.
     it "sizes a slide's diagram from the deck's rules, not the document's" do
       visit plan_page_path(plan)
+      2.times { find(".deck-toolbar__step--next").click }
       expect(page).to have_css(".deck-slide .mermaid-diagram__canvas > svg", wait: 15)
 
       sizing = page.evaluate_script(<<~JS)

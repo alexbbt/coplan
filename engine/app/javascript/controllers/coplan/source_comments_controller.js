@@ -251,6 +251,10 @@ export default class extends Controller {
       const element = Array.from(surface.querySelectorAll("[data-source-target]")).find(el =>
         !el.classList.contains("source-edge-hit") && this.matchingThreads(JSON.parse(el.dataset.sourceTarget)).includes(data))
       if (!element) return // Mermaid may still be rendering; the caller retries.
+      const slide = element.closest(".deck-region .deck-slide")
+      if (slide) slide.dispatchEvent(new CustomEvent("coplan:deck-reveal", {
+        bubbles: true, detail: { slide: slide.dataset.slide }
+      }))
       element.scrollIntoView({ block: "center", behavior: "instant" })
       this.show(element, data.dataset.threadStatus === "resolved")
     }
