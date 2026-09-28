@@ -1,5 +1,8 @@
 <% content_for(:title, "#{@plan.title} — CoPlan") %>
 <% content_for(:head) do %>
+  <%# Archive redirects to the containing folder. Back must fetch the new
+      archived state instead of restoring a pre-archive Turbo snapshot. %>
+  <meta name="turbo-cache-control" content="no-cache">
   <%# One address per document. Anything that reaches this page by the
       legacy /plans/<uuid> form — a link that predates slugs — still says
       here which URL is the real one. %>

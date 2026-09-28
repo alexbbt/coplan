@@ -71,6 +71,20 @@
       <% end %>
     </nav>
 
+    <% if flash[:archive_undo_plan_id].present? %>
+      <div id="archive-confirmation" class="archive-confirmation" role="status">
+        <div class="archive-confirmation__message">
+          <strong>Archived “<%= flash[:archive_undo_plan_title] %>”</strong>
+          <span>It’s hidden from this <%= @folder ? "folder" : "library" %>.</span>
+        </div>
+        <div class="archive-confirmation__actions">
+          <%= button_to "Undo archive", unarchive_plan_path(flash[:archive_undo_plan_id]), method: :patch,
+                params: { return_to_home: true }, class: "btn btn--primary btn--sm" %>
+          <%= link_to "View archived", workspace_path(filter: "archived"), class: "btn btn--secondary btn--sm" %>
+        </div>
+      </div>
+    <% end %>
+
     <% if @can_write %>
       <%# Creates inside the folder you're looking at (changeable). %>
       <%= render layout: "coplan/shared/add_modal", locals: { id: "new-folder-modal", title: "New folder" } do %>
@@ -164,7 +178,7 @@
                 frame_folder: @folder&.id %>
         </div>
       <% else %>
-        <div class="empty-state card">
+        <div id="workspace-empty-state" class="empty-state card">
           <% if @folder %>
             <p>Nothing in <strong><%= @folder.name %></strong> yet.</p>
             <% if @can_write %>

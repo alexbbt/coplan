@@ -74,6 +74,54 @@ RSpec.describe "Folders workspace", type: :system do
       expect(page).to have_current_path(browse_path(handle: author.library.handle, slug_path: q3.slug_path))
     end
 
+    it "returns to the containing folder after archiving a filed plan" do
+      visit plan_page_path(foldered_plan)
+      find("#plan-toolbar button[aria-label='More actions']").click
+      within("#plan-menu") { click_button "Archive plan" }
+
+      expect(page).to have_current_path(browse_path(handle: author.library.handle, slug_path: q3.slug_path))
+      expect(page).to have_css(".workspace-crumbs__crumb--current", text: "Q3")
+      expect(page).to have_link("View archived", href: browse_path(handle: author.library.handle, slug_path: q3.slug_path, filter: "archived"))
+      expect(page).not_to have_css(".plan-row[data-plan-id='#{foldered_plan.id}']")
+      expect(foldered_plan.reload.archived?).to be(true)
+
+      within(".archive-confirmation") { click_button "Undo archive" }
+      expect(page).to have_current_path(browse_path(handle: author.library.handle, slug_path: q3.slug_path))
+      expect(page).to have_css(".plan-row[data-plan-id='#{foldered_plan.id}']")
+      expect(foldered_plan.reload.archived?).to be(false)
+    end
+
+    it "fetches the archived state when going back to the plan" do
+      visit plan_page_path(foldered_plan)
+      find("#plan-toolbar button[aria-label='More actions']").click
+      within("#plan-menu") { click_button "Archive plan" }
+      expect(page).to have_current_path(browse_path(handle: author.library.handle, slug_path: q3.slug_path))
+
+      page.go_back
+      expect(page).to have_css(".plan-banner--archived", wait: 10)
+      find("#plan-toolbar button[aria-label='More actions']").click
+      within("#plan-menu") { expect(page).to have_no_button("Archive plan") }
+    end
+
+    it "keeps the folder scroll position when Undo restores its row" do
+      visit plan_page_path(foldered_plan)
+      find("#plan-toolbar button[aria-label='More actions']").click
+      within("#plan-menu") { click_button "Archive plan" }
+      expect(page).to have_css("#archive-confirmation")
+
+      page.execute_script(<<~JS)
+        document.querySelector('.workspace__main').style.minHeight = '1600px'
+        window.scrollTo(0, 200)
+      JS
+      previous_scroll = page.evaluate_script("window.scrollY")
+      expect(previous_scroll).to be > 0
+      page.execute_script("document.querySelector('#archive-confirmation form').requestSubmit()")
+
+      expect(page).to have_css(".plan-row[data-plan-id='#{foldered_plan.id}']")
+      expect(page).to have_no_css("#archive-confirmation")
+      expect(page.evaluate_script("window.scrollY")).to be_within(2).of(previous_scroll)
+    end
+
     it "goes up to the plan's containing folder from the masthead and sticky nav" do
       foldered_plan.current_plan_version.update!(
         content_markdown: (1..30).map { |n| "## Section #{n}\n\nEnough content to scroll past the masthead." }.join("\n\n")

@@ -367,19 +367,17 @@ module CoPlan
       end
     end
 
-    # Archiving happens in place: the banner appears (with Restore — the
-    # undo), the toolbar's menu loses its Archive entry, and a toast
-    # confirms. No navigation, so the consequence is visible right where
-    # the action happened.
+    # An archived plan leaves its current listing, so return to the folder
+    # that contained it (or the library root when it was unfiled).
     def archive
       authorize!(@plan, :archive?)
       @plan.update!(archived_at: Time.current)
       broadcast_plan_update(@plan)
       Plans::LogEvent.call(plan: @plan, actor: current_user, event_type: "archived")
-      respond_to do |format|
-        format.turbo_stream { render turbo_stream: archive_streams("Archived — hidden from lists, still readable at this URL.") }
-        format.html { redirect_to helpers.plan_browse_path(@plan), notice: "Plan archived. It's hidden from lists unless someone filters for archived plans." }
-      end
+      destination = @plan.folder || @plan.library
+      flash[:archive_undo_plan_id] = @plan.id
+      flash[:archive_undo_plan_title] = @plan.title
+      redirect_to helpers.browse_path_for(destination), status: :see_other
     end
 
     def unarchive
@@ -387,8 +385,16 @@ module CoPlan
       @plan.update!(archived_at: nil)
       broadcast_plan_update(@plan)
       Plans::LogEvent.call(plan: @plan, actor: current_user, event_type: "unarchived")
+      if params[:return_to_home].present?
+        destination = @plan.folder || @plan.library
+        respond_to do |format|
+          format.turbo_stream { render turbo_stream: restore_workspace_streams }
+          format.html { redirect_to helpers.browse_path_for(destination), status: :see_other, notice: "Plan restored." }
+        end
+        return
+      end
       respond_to do |format|
-        format.turbo_stream { render turbo_stream: archive_streams("Plan restored.") }
+        format.turbo_stream { render turbo_stream: restore_streams("Plan restored.") }
         format.html { redirect_to helpers.plan_browse_path(@plan), notice: "Plan restored." }
       end
     end
@@ -817,17 +823,39 @@ module CoPlan
       ]
     end
 
-    # Turbo Streams for archive/restore: the banner slot is the loud,
-    # visible consequence (it appears with a Restore button — the undo),
-    # the header's byline picks up/drops the Archived flag, and the
-    # toolbar re-renders so its menu tracks the new state.
-    def archive_streams(message)
+    # A direct restore stays on the plan page: clear the archived banner,
+    # update the byline and location link, and restore the toolbar action.
+    def restore_streams(message)
       [
         turbo_stream.replace("plan-header", partial: "coplan/plans/header", locals: { plan: @plan }),
         turbo_stream.replace("plan-nav-context", partial: "coplan/plans/nav_context", locals: { plan: @plan }),
         turbo_stream.replace("plan-banner-slot", partial: "coplan/plans/banner", locals: { plan: @plan }),
         turbo_stream.replace("plan-toolbar", partial: "coplan/plans/toolbar", locals: { plan: @plan }),
         toast_stream(message, "notice")
+      ]
+    end
+
+    # Undo runs from the folder we just returned to. Replace only its row
+    # page and sidebar, keeping the workspace and its scroll position intact.
+    def restore_workspace_streams
+      @library = @plan.library
+      @folder = @plan.folder
+      index
+      page = render_to_string(partial: "coplan/plans/plan_page", formats: [ :html ], locals: {
+        plans: @level_plans,
+        plan_unread_counts: @plan_unread_counts,
+        page: 1,
+        has_next_page: @level_has_next_page,
+        group_key: "level",
+        frame_filter: nil,
+        frame_folder: @folder&.id
+      })
+
+      [
+        turbo_stream.remove("archive-confirmation"),
+        turbo_stream.replace("plans-level-page-1", page),
+        turbo_stream.replace("workspace-empty-state", helpers.tag.div(page, class: "plans-list")),
+        turbo_stream.replace("workspace-sidebar", partial: "coplan/plans/sidebar", method: :morph)
       ]
     end
   end
