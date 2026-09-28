@@ -215,6 +215,60 @@ RSpec.describe "Deck UX", type: :system do
     end
   end
 
+  it "starts a replacement id-less deck on its first slide" do
+    mixed = <<~MD
+      ::: {.presentation}
+
+      # Alpha one
+
+      ---
+
+      # Alpha two
+
+      ---
+
+      # Alpha three
+
+      :::
+
+      ::: {.presentation}
+
+      # Beta one
+
+      ---
+
+      # Beta two
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: mixed,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    2.times { all(".deck-region").first.find(".deck-toolbar__step--next").click }
+    expect(all(".deck-region").first).to have_css(".deck-toolbar__count[data-count='3 / 3']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const replacement = template.content.querySelector(".deck-region")
+      replacement.dataset.deckSourceDigest = "replacement-deck"
+      replacement.querySelectorAll(".deck-slide h1").forEach((heading, index) => {
+        heading.textContent = `Gamma ${index + 1}`
+      })
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(all(".deck-region").first).to have_css(".deck-toolbar__count[data-count='1 / 3']")
+    expect(all(".deck-region").first).to have_css(".deck-slide--current", text: "Gamma 1")
+    expect(all(".deck-region").last).to have_css(".deck-toolbar__count[data-count='1 / 2']")
+  end
+
   it "keeps a heading-free deck position after its DOM changes" do
     content = <<~MD
       ::: {.presentation}

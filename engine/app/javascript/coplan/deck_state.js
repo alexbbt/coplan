@@ -5,7 +5,8 @@ export function captureDeckPositions(root) {
     id: region.dataset.deckRegionId,
     slide: Number(region.dataset.currentSlide || 1),
     content: region.dataset.deckSourceDigest,
-    headings: deckHeadings(region)
+    headings: deckHeadings(region),
+    slides: deckSlideTexts(region)
   }))
 }
 
@@ -40,13 +41,20 @@ export function restoreDeckPositions(root, positions) {
   })
 
   // A content edit changes the digest, and a heading edit can change the
-  // fallback too. Carry the one remaining id-less reader across that edit.
+  // fallback too. Carry the one remaining id-less reader only when it stayed
+  // in place and still shares a slide with its predecessor. Otherwise a
+  // removed deck followed by a new deck would inherit the old slide.
   if (positions.length === regions.length) {
     const unmatchedOld = positions.map((position, index) => !used.has(index) ? index : -1).filter(index => index >= 0)
     const unmatchedNew = regions.map((region, index) => !matches.has(index) ? index : -1).filter(index => index >= 0)
     if (unmatchedOld.length === 1 && unmatchedNew.length === 1 &&
+        unmatchedOld[0] === unmatchedNew[0] &&
         !positions[unmatchedOld[0]].id && !regions[unmatchedNew[0]].dataset.deckRegionId) {
-      match(unmatchedNew[0], unmatchedOld[0])
+      const previous = positions[unmatchedOld[0]].slides
+      const current = deckSlideTexts(regions[unmatchedNew[0]])
+      if (previous.some((text, index) => text && text === current[index])) {
+        match(unmatchedNew[0], unmatchedOld[0])
+      }
     }
   }
 
@@ -63,4 +71,9 @@ export function restoreDeckPositions(root, positions) {
 function deckHeadings(region) {
   return Array.from(region.querySelectorAll(".deck-slide h1, .deck-slide h2, .deck-slide h3"), heading =>
     heading.textContent.replace(/\s+/g, " ").trim()).join("\0")
+}
+
+function deckSlideTexts(region) {
+  return Array.from(region.querySelectorAll(":scope > .deck > .deck-slide"), slide =>
+    slide.textContent.replace(/\s+/g, " ").trim())
 }
