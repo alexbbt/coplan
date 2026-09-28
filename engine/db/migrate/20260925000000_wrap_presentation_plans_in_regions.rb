@@ -1,6 +1,7 @@
 class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
   PRESENTATION_MARKER = "_coplan_previous_presentation_behavior".freeze
   MIGRATION_REASON = "Presentation rendering now follows Markdown regions".freeze
+  ROLLBACK_REASON = "Presentation region migration rolled back".freeze
 
   def up
     presentation_types = CoPlan::PlanType.where(behavior: "presentation")
@@ -40,19 +41,19 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
 
   def down
     ensure_no_edited_presentations!
-    add_column :coplan_plan_types, :behavior, :string, limit: 20, null: false, default: "document"
+    add_column :coplan_plan_types, :behavior, :string, limit: 20, null: false, default: "document" unless column_exists?(:coplan_plan_types, :behavior)
+    CoPlan::PlanType.reset_column_information
     CoPlan::PlanType.find_each do |type|
       metadata = type.metadata.to_h
-      previous = metadata.delete(PRESENTATION_MARKER)
+      previous = metadata[PRESENTATION_MARKER]
       next unless previous
 
-      type.update_columns(behavior: "presentation", metadata: metadata, template_content: previous["template_content"])
       CoPlan::Plan.where(plan_type_id: type.id).find_each do |plan|
         plan.with_lock do
           next unless plan.current_plan_version&.reason == MIGRATION_REASON
 
           original = plan.plan_versions.find_by(revision: plan.current_revision - 1)
-          next unless original
+          raise ActiveRecord::IrreversibleMigration, "Missing original version for presentation plan #{plan.id}" unless original
 
           CoPlan::EditLease.where(plan_id: plan.id).delete_all
           CoPlan::Plans::ReplaceContent.call(
@@ -62,10 +63,12 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
             actor_type: "system",
             actor_id: nil,
             change_summary: "Restored presentation content for rollback",
-            reason: "Presentation region migration rolled back"
+            reason: ROLLBACK_REASON
           )
         end
       end
+      metadata.delete(PRESENTATION_MARKER)
+      type.update_columns(behavior: "presentation", metadata: metadata, template_content: previous["template_content"])
     end
     # Only the exact migration revision is reversed, as a new version.
   end
@@ -76,6 +79,8 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
     CoPlan::Plan.find_each do |plan|
       migrated = plan.plan_versions.where(reason: MIGRATION_REASON).order(revision: :desc).first
       next if migrated && plan.current_plan_version_id == migrated.id && plan.plan_type.metadata.to_h.key?(PRESENTATION_MARKER)
+      current = plan.current_plan_version
+      next if migrated && current&.reason == ROLLBACK_REASON && current.revision == migrated.revision + 1
       next unless migrated || CoPlan::ContentRegions::Split.call(plan.current_content).regions.any? { |region| region.kind == :presentation }
 
       raise ActiveRecord::IrreversibleMigration,

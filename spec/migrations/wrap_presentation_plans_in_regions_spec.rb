@@ -31,4 +31,16 @@ RSpec.describe WrapPresentationPlansInRegions do
     expect(migration).not_to receive(:add_column)
     expect { migration.down }.to raise_error(ActiveRecord::IrreversibleMigration, /incompatible with the legacy renderer/)
   end
+
+  it "allows a plan already restored by an interrupted rollback" do
+    migrated = create(:plan_version, plan: plan, revision: plan.current_revision + 1,
+      content_markdown: "::: {.presentation}\n\n# Original\n\n:::", actor_type: "system",
+      reason: described_class::MIGRATION_REASON)
+    restored = create(:plan_version, plan: plan, revision: migrated.revision + 1,
+      content_markdown: "# Original", actor_type: "system",
+      reason: described_class::ROLLBACK_REASON)
+    plan.update_columns(current_plan_version_id: restored.id, current_revision: restored.revision)
+
+    expect { migration.send(:ensure_no_edited_presentations!) }.not_to raise_error
+  end
 end
