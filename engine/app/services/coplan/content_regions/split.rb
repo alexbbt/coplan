@@ -58,10 +58,10 @@ module CoPlan
       private
 
       def add_region(regions, lines, kind, first, last, id: nil, theme: nil)
-        return if first > last
+        return if first > last && kind != :presentation
 
-        source = lines[(first - 1)..(last - 1)].join("\n")
-        regions << Region.new(kind:, source:, start_line: first, id:, theme:) unless source.empty?
+        source = first > last ? "" : lines[(first - 1)..(last - 1)].join("\n")
+        regions << Region.new(kind:, source:, start_line: first, id:, theme:) if kind == :presentation || !source.empty?
       end
     end
   end

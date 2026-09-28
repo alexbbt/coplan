@@ -28,6 +28,14 @@ RSpec.describe CoPlan::SlideshowsHelper, type: :helper do
       expect(doc.at_css('a[href="#proposal"]')).to be_present
     end
 
+    it "renders a paired but empty presentation region as a deck" do
+      doc = Nokogiri::HTML::DocumentFragment.parse(helper.render_content_regions("::: {.presentation}\n\n:::"))
+
+      expect(doc.css(".deck-region").size).to eq(1)
+      expect(doc.at_css(".deck-toolbar__count").text).to eq("0 / 0")
+      expect(doc.text).not_to include(":::")
+    end
+
     it "shares footnote numbering and link definitions across prose and decks" do
       source = <<~MD
         Prose[^a] and [source][link].

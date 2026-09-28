@@ -20,4 +20,13 @@ RSpec.describe CoPlan::ContentRegions::Split do
     expect(result.regions.map(&:kind)).to eq([ :document ])
     expect(result.canonical_source).to eq(source)
   end
+
+  it "keeps a paired presentation region with no slide content" do
+    source = "::: {.presentation}\n\n:::"
+    result = described_class.call(source)
+
+    expect(result.regions.map(&:kind)).to eq([ :presentation ])
+    expect(result.regions.first.source).to eq("")
+    expect(result.canonical_source).not_to include(":::")
+  end
 end

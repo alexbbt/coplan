@@ -1,5 +1,6 @@
 class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
   PRESENTATION_MARKER = "_coplan_previous_presentation_behavior".freeze
+  MIGRATION_REASON = "Presentation rendering now follows Markdown regions".freeze
 
   def up
     presentation_types = CoPlan::PlanType.where(behavior: "presentation")
@@ -30,7 +31,7 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
           actor_type: "system",
           actor_id: nil,
           change_summary: "Wrapped existing presentation in a content region",
-          reason: "Presentation rendering now follows Markdown regions"
+          reason: MIGRATION_REASON
         )
       end
     end
@@ -38,6 +39,7 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
   end
 
   def down
+    ensure_no_edited_presentations!
     add_column :coplan_plan_types, :behavior, :string, limit: 20, null: false, default: "document"
     CoPlan::PlanType.find_each do |type|
       metadata = type.metadata.to_h
@@ -47,7 +49,7 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
       type.update_columns(behavior: "presentation", metadata: metadata, template_content: previous["template_content"])
       CoPlan::Plan.where(plan_type_id: type.id).find_each do |plan|
         plan.with_lock do
-          next unless plan.current_plan_version&.reason == "Presentation rendering now follows Markdown regions"
+          next unless plan.current_plan_version&.reason == MIGRATION_REASON
 
           original = plan.plan_versions.find_by(revision: plan.current_revision - 1)
           next unless original
@@ -65,7 +67,23 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
         end
       end
     end
-    # Later user edits remain immutable; only the exact migration revision
-    # is reversed, and that reversal is itself a new version.
+    # Only the exact migration revision is reversed, as a new version.
+  end
+
+  private
+
+  def ensure_no_edited_presentations!
+    CoPlan::PlanType.find_each do |type|
+      next unless type.metadata.to_h.key?(PRESENTATION_MARKER)
+
+      CoPlan::Plan.where(plan_type_id: type.id).find_each do |plan|
+        migrated = plan.plan_versions.where(reason: MIGRATION_REASON).order(revision: :desc).first
+        next if migrated && plan.current_plan_version_id == migrated.id
+        next unless migrated || CoPlan::ContentRegions::Split.call(plan.current_content).regions.any? { |region| region.kind == :presentation }
+
+        raise ActiveRecord::IrreversibleMigration,
+          "Presentation plan #{plan.id} has content incompatible with the legacy renderer; resolve it before rolling back"
+      end
+    end
   end
 end

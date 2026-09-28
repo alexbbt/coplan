@@ -85,7 +85,7 @@ module CoPlan
               tag.div(class: "deck-toolbar") do
                 safe_join([
                   tag.button("", type: "button", class: "deck-toolbar__step deck-toolbar__step--previous", aria: { label: "Previous slide" }, data: { action: "coplan--deck-reader#previous" }),
-                  tag.span("", class: "deck-toolbar__count", role: "status", aria: { live: "polite" }, data: { "coplan--deck-reader-target": "count" }),
+                  tag.span(region.source.empty? ? "0 / 0" : "", class: "deck-toolbar__count", role: "status", aria: { live: "polite" }, data: { "coplan--deck-reader-target": "count" }),
                   tag.button("", type: "button", class: "deck-toolbar__step deck-toolbar__step--next", aria: { label: "Next slide" }, data: { action: "coplan--deck-reader#next" }),
                   tag.button("", type: "button", class: "deck-toolbar__present", aria: { label: "Present deck" }, data: { action: "coplan--deck-presenter#start" })
                 ])
