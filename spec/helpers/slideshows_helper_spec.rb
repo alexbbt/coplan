@@ -32,7 +32,10 @@ RSpec.describe CoPlan::SlideshowsHelper, type: :helper do
       doc = Nokogiri::HTML::DocumentFragment.parse(helper.render_content_regions("::: {.presentation}\n\n:::"))
 
       expect(doc.css(".deck-region").size).to eq(1)
-      expect(doc.at_css(".deck-toolbar__count").text).to eq("0 / 0")
+      expect(doc.at_css(".deck-toolbar__count")["data-count"]).to eq("0 / 0")
+      expect(doc.at_css(".deck-toolbar__count").text).to be_empty
+      expect(doc.css(".deck-toolbar button").size).to eq(3)
+      expect(doc.css(".deck-toolbar button").all? { |button| button.key?("disabled") }).to be(true)
       expect(doc.text).not_to include(":::")
     end
 

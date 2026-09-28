@@ -3443,6 +3443,8 @@ img.avatar {
 .deck-toolbar__step--next::before { content: "→"; }
 .deck-toolbar__count::before { content: attr(data-count); color: var(--color-text-muted); font-size: var(--text-sm); }
 .deck-toolbar__present::before { content: "▶ Present"; }
+.deck-toolbar button:disabled { cursor: default; opacity: 0.45; }
+.deck-toolbar button:disabled:hover { color: var(--color-text-muted); box-shadow: none; }
 
 /* Add scroll-margin to headings — and the plan's own masthead header — so
    they clear the sticky nav. The nav-title control scrolls to the very top

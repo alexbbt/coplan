@@ -75,6 +75,7 @@ module CoPlan
           deck_number += 1
           deck = render_slideshow(region.source, interactive:, theme: region.theme, definitions: definitions,
                                   line_offset: region.start_line - 1, reconcile: false, retain_sourcepos: interactive)
+          empty_deck = region.source.blank?
           tag.div(class: "deck-presenter deck-region",
                   tabindex: 0, data: { controller: "coplan--deck-presenter coplan--deck-reader",
                     deck_region_id: region.id,
@@ -84,10 +85,10 @@ module CoPlan
             safe_join([
               tag.div(class: "deck-toolbar") do
                 safe_join([
-                  tag.button("", type: "button", class: "deck-toolbar__step deck-toolbar__step--previous", aria: { label: "Previous slide" }, data: { action: "coplan--deck-reader#previous" }),
-                  tag.span(region.source.empty? ? "0 / 0" : "", class: "deck-toolbar__count", role: "status", aria: { live: "polite" }, data: { "coplan--deck-reader-target": "count" }),
-                  tag.button("", type: "button", class: "deck-toolbar__step deck-toolbar__step--next", aria: { label: "Next slide" }, data: { action: "coplan--deck-reader#next" }),
-                  tag.button("", type: "button", class: "deck-toolbar__present", aria: { label: "Present deck" }, data: { action: "coplan--deck-presenter#start" })
+                  tag.button("", type: "button", class: "deck-toolbar__step deck-toolbar__step--previous", disabled: empty_deck, aria: { label: "Previous slide" }, data: { action: "coplan--deck-reader#previous" }),
+                  tag.span("", class: "deck-toolbar__count", role: "status", aria: { live: "polite" }, data: { "coplan--deck-reader-target": "count", count: ("0 / 0" if empty_deck) }),
+                  tag.button("", type: "button", class: "deck-toolbar__step deck-toolbar__step--next", disabled: empty_deck, aria: { label: "Next slide" }, data: { action: "coplan--deck-reader#next" }),
+                  tag.button("", type: "button", class: "deck-toolbar__present", disabled: empty_deck, aria: { label: "Present deck" }, data: { action: "coplan--deck-presenter#start" })
                 ])
               end,
               deck
