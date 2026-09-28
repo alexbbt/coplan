@@ -73,17 +73,13 @@ class WrapPresentationPlansInRegions < ActiveRecord::Migration[8.1]
   private
 
   def ensure_no_edited_presentations!
-    CoPlan::PlanType.find_each do |type|
-      next unless type.metadata.to_h.key?(PRESENTATION_MARKER)
+    CoPlan::Plan.find_each do |plan|
+      migrated = plan.plan_versions.where(reason: MIGRATION_REASON).order(revision: :desc).first
+      next if migrated && plan.current_plan_version_id == migrated.id && plan.plan_type.metadata.to_h.key?(PRESENTATION_MARKER)
+      next unless migrated || CoPlan::ContentRegions::Split.call(plan.current_content).regions.any? { |region| region.kind == :presentation }
 
-      CoPlan::Plan.where(plan_type_id: type.id).find_each do |plan|
-        migrated = plan.plan_versions.where(reason: MIGRATION_REASON).order(revision: :desc).first
-        next if migrated && plan.current_plan_version_id == migrated.id
-        next unless migrated || CoPlan::ContentRegions::Split.call(plan.current_content).regions.any? { |region| region.kind == :presentation }
-
-        raise ActiveRecord::IrreversibleMigration,
-          "Presentation plan #{plan.id} has content incompatible with the legacy renderer; resolve it before rolling back"
-      end
+      raise ActiveRecord::IrreversibleMigration,
+        "Plan #{plan.id} has content incompatible with the legacy renderer; resolve it before rolling back"
     end
   end
 end

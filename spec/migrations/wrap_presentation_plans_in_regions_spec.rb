@@ -21,4 +21,14 @@ RSpec.describe WrapPresentationPlansInRegions do
     expect(migration).not_to receive(:add_column)
     expect { migration.down }.to raise_error(ActiveRecord::IrreversibleMigration, /incompatible with the legacy renderer/)
   end
+
+  it "refuses rollback when an ordinary plan contains a deck" do
+    ordinary_plan = create(:plan, plan_type: create(:plan_type), created_by_user: user)
+    version = create(:plan_version, plan: ordinary_plan, revision: ordinary_plan.current_revision + 1,
+      content_markdown: "::: {.presentation}\n\n# Embedded deck\n\n:::")
+    ordinary_plan.update_columns(current_plan_version_id: version.id, current_revision: version.revision)
+
+    expect(migration).not_to receive(:add_column)
+    expect { migration.down }.to raise_error(ActiveRecord::IrreversibleMigration, /incompatible with the legacy renderer/)
+  end
 end
