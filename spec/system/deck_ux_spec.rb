@@ -246,6 +246,43 @@ RSpec.describe "Deck UX", type: :system do
     expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true)
   end
 
+  it "keeps a heading-free deck position when its source changes" do
+    content = <<~MD
+      ::: {.presentation}
+
+      First narrative.
+
+      ---
+
+      Second narrative.
+
+      :::
+    MD
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    visit plan_page_path(plan)
+    find(".deck-toolbar__step--next").click
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+
+    page.execute_script(<<~JS)
+      const target = document.getElementById("plan-content-body")
+      const stream = document.createElement("turbo-stream")
+      stream.setAttribute("action", "coplan-replace-if-clean")
+      stream.setAttribute("target", "plan-content-body")
+      stream.setAttribute("data-revision", "#{plan.current_revision + 1}")
+      const template = document.createElement("template")
+      template.innerHTML = target.innerHTML
+      const deck = template.content.querySelector(".deck-region")
+      deck.dataset.deckSourceDigest = "edited-source-digest"
+      deck.querySelector(".deck-slide:last-child").innerHTML = "<p>Edited second narrative.</p>"
+      stream.append(template)
+      document.body.append(stream)
+    JS
+
+    expect(page).to have_css(".deck-slide--current[data-slide='2']", visible: true, text: "Edited second narrative.")
+    expect(page).to have_css(".deck-toolbar__count[data-count='2 / 2']")
+  end
+
   it "marks a changed heading nested in a split slide" do
     content = <<~MD
       ::: {.presentation}
