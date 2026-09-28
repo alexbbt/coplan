@@ -18,8 +18,8 @@ module CoPlan
     # to every fragment so references still resolve); footnotes render once,
     # document-wide, in the plan's References back matter, exactly as they
     # do for documents.
-    def render_slideshow(content, interactive: true, theme: "coplan", definitions: nil, line_offset: 0, reconcile: true, retain_sourcepos: false)
-      result = Slideshows::Split.call(content)
+    def render_slideshow(content, interactive: true, theme: "coplan", definitions: nil, line_offset: 0, reconcile: true, retain_sourcepos: false, split_result: nil)
+      result = split_result || Slideshows::Split.call(content)
       definition_blocks = definitions || result.definition_blocks
 
       lead_by_slide = {}
@@ -73,9 +73,11 @@ module CoPlan
       fragments = result.regions.map do |region|
         if region.kind == :presentation
           deck_number += 1
+          split_result = Slideshows::Split.call(region.source)
           deck = render_slideshow(region.source, interactive:, theme: region.theme, definitions: definitions,
-                                  line_offset: region.start_line - 1, reconcile: false, retain_sourcepos: interactive)
-          empty_deck = region.source.blank?
+                                  line_offset: region.start_line - 1, reconcile: false, retain_sourcepos: interactive,
+                                  split_result: split_result)
+          empty_deck = split_result.slides.empty?
           tag.div(class: "deck-presenter deck-region",
                   tabindex: 0, data: { controller: "coplan--deck-presenter coplan--deck-reader",
                     deck_region_id: region.id,

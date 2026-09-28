@@ -372,6 +372,17 @@ RSpec.describe "Deck UX", type: :system do
     expect(page).to have_css(".deck-slide--current[data-slide='3']", visible: true)
   end
 
+  it "ignores the presentation shortcut while the inline editor hides the reader" do
+    visit plan_page_path(plan)
+    within("#plan-toolbar") { click_link "Edit" }
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    find(".inline-editor button[aria-label='Done editing']").send_keys("p")
+
+    expect(page).to have_no_css(".deck--presenting", visible: :all)
+    expect(page.evaluate_script("window.location.hash")).not_to match(/^#present-/)
+    expect(page.evaluate_script("document.documentElement.style.overflow")).not_to eq("hidden")
+  end
+
   it "reveals a hidden slide when its heading is selected in the outline" do
     visit plan_page_path(plan)
 
@@ -532,6 +543,23 @@ RSpec.describe "Deck UX", type: :system do
       controller?.connect()
     JS
     expect(page).to have_css(".markdown-rendered .section-changed", text: "Fresh closing text.")
+  end
+
+  it "keeps changed section bands out of discussion bodies" do
+    content = "# Closing\n\nFresh closing text."
+    CoPlan::Plans::ReplaceContent.call(plan: plan, new_content: content,
+      base_revision: plan.current_revision, actor_type: "human", actor_id: user.id)
+    thread = create(:comment_thread, plan: plan, created_by_user: user)
+    create(:comment, comment_thread: thread, author_id: user.id, body_markdown: "Unchanged discussion text.")
+    visit plan_page_path(plan)
+    page.execute_script(<<~JS)
+      const layout = document.querySelector(".plan-layout")
+      layout.setAttribute("data-coplan--changed-sections-keys-value", '["closing"]')
+      window.Stimulus.getControllerForElementAndIdentifier(layout, "coplan--changed-sections").connect()
+    JS
+
+    expect(page).to have_css("#plan-content-body p.section-changed--end", text: "Fresh closing text.")
+    expect(page).to have_no_css("#plan-threads .section-changed", visible: :all)
   end
 
   it "flashes a live change in a later content region" do

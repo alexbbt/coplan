@@ -214,7 +214,11 @@ export default class extends Controller {
 
     if (!this.presenting) {
       if (commandFor("deck", event) !== "start" || this._typing(event.target)) return
+      // Inline editing keeps the reader connected but hides it. A shortcut
+      // from an editor control must not start a show underneath that editor.
+      if (this.element.closest("[hidden]")) return
       const regions = Array.from(document.querySelectorAll(".deck-region"))
+        .filter(region => !region.closest("[hidden]"))
       const resume = window.location.hash.match(/^#present-(\d+)-\d+$/)
       const resumed = resume && regions.find(region => region.dataset.deckNumber === resume[1])
       const focused = document.activeElement?.closest?.(".deck-region")

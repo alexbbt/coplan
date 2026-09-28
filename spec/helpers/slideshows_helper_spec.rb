@@ -39,6 +39,14 @@ RSpec.describe CoPlan::SlideshowsHelper, type: :helper do
       expect(doc.text).not_to include(":::")
     end
 
+    it "disables an empty deck made only of a slide separator" do
+      doc = Nokogiri::HTML::DocumentFragment.parse(helper.render_content_regions("::: {.presentation}\n\n---\n\n:::"))
+
+      expect(doc.css(".deck-slide")).to be_empty
+      expect(doc.at_css(".deck-toolbar__count")["data-count"]).to eq("0 / 0")
+      expect(doc.css(".deck-toolbar button").all? { |button| button.key?("disabled") }).to be(true)
+    end
+
     it "shares footnote numbering and link definitions across prose and decks" do
       source = <<~MD
         Prose[^a] and [source][link].

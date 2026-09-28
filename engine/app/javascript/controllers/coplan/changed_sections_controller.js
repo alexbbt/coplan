@@ -21,7 +21,8 @@ export default class extends Controller {
   static values = { keys: Array, rewritten: Boolean, historyUrl: String }
 
   connect() {
-    const rendered = this.element.querySelector(".markdown-rendered")
+    const content = this.element.querySelector("#plan-content-body")
+    const rendered = content?.querySelector(".markdown-rendered")
     if (!rendered) return
 
     if (this.rewrittenValue) {
@@ -40,7 +41,7 @@ export default class extends Controller {
     const runs = []
     let run = null
 
-    for (const node of renderedBlocks(this.element)) {
+    for (const node of renderedBlocks(content)) {
       if (/^H[1-3]$/.test(node.tagName)) {
         // Every heading is slugged, changed or not: the `used` set carries
         // the -2/-3 duplicate counter and has to stay in step with Ruby's.
