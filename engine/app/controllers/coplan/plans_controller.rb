@@ -387,7 +387,10 @@ module CoPlan
       Plans::LogEvent.call(plan: @plan, actor: current_user, event_type: "unarchived")
       if params[:return_to_home].present?
         destination = @plan.folder || @plan.library
-        redirect_to helpers.browse_path_for(destination), status: :see_other, notice: "Plan restored."
+        respond_to do |format|
+          format.turbo_stream { render turbo_stream: restore_workspace_streams }
+          format.html { redirect_to helpers.browse_path_for(destination), status: :see_other, notice: "Plan restored." }
+        end
         return
       end
       respond_to do |format|
@@ -829,6 +832,30 @@ module CoPlan
         turbo_stream.replace("plan-banner-slot", partial: "coplan/plans/banner", locals: { plan: @plan }),
         turbo_stream.replace("plan-toolbar", partial: "coplan/plans/toolbar", locals: { plan: @plan }),
         toast_stream(message, "notice")
+      ]
+    end
+
+    # Undo runs from the folder we just returned to. Replace only its row
+    # page and sidebar, keeping the workspace and its scroll position intact.
+    def restore_workspace_streams
+      @library = @plan.library
+      @folder = @plan.folder
+      index
+      page = render_to_string(partial: "coplan/plans/plan_page", formats: [ :html ], locals: {
+        plans: @level_plans,
+        plan_unread_counts: @plan_unread_counts,
+        page: 1,
+        has_next_page: @level_has_next_page,
+        group_key: "level",
+        frame_filter: nil,
+        frame_folder: @folder&.id
+      })
+
+      [
+        turbo_stream.remove("archive-confirmation"),
+        turbo_stream.replace("plans-level-page-1", page),
+        turbo_stream.replace("workspace-empty-state", helpers.tag.div(page, class: "plans-list")),
+        turbo_stream.replace("workspace-sidebar", partial: "coplan/plans/sidebar", method: :morph)
       ]
     end
   end

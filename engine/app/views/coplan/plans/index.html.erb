@@ -72,7 +72,7 @@
     </nav>
 
     <% if flash[:archive_undo_plan_id].present? %>
-      <div class="archive-confirmation" role="status">
+      <div id="archive-confirmation" class="archive-confirmation" role="status">
         <div class="archive-confirmation__message">
           <strong>Archived “<%= flash[:archive_undo_plan_title] %>”</strong>
           <span>It’s hidden from this <%= @folder ? "folder" : "library" %>.</span>
@@ -178,7 +178,7 @@
                 frame_folder: @folder&.id %>
         </div>
       <% else %>
-        <div class="empty-state card">
+        <div id="workspace-empty-state" class="empty-state card">
           <% if @folder %>
             <p>Nothing in <strong><%= @folder.name %></strong> yet.</p>
             <% if @can_write %>

@@ -109,6 +109,21 @@ RSpec.describe "Plans", type: :request do
       expect(response).to redirect_to(browse_library_path(handle: alice.library.handle))
       expect(plan.reload).to be_archived
     end
+
+    it "restores the row and sidebar in place when Undo is submitted with Turbo" do
+      plan.update!(archived_at: Time.current)
+
+      patch unarchive_plan_path(plan), params: { return_to_home: true },
+        headers: { "Accept" => "text/vnd.turbo-stream.html" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('action="remove" target="archive-confirmation"')
+      expect(response.body).to include('action="replace" target="plans-level-page-1"')
+      expect(response.body).to include('action="replace" target="workspace-empty-state"')
+      expect(response.body).to include('action="replace" target="workspace-sidebar"')
+      expect(response.body).to include("#{plan.title}")
+      expect(plan.reload).not_to be_archived
+    end
   end
 
   it "scopes comment footnote ids so they can't collide with the plan body's" do
