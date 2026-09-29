@@ -1,9 +1,7 @@
 ---
 name: Presentation
 icon: presentation
-description: >-
-  A slide deck embedded in a plan. Add prose before or after it, or include
-  more than one deck. Every `---` inside a deck starts a new slide.
+description: A slide deck for sharing an idea or update.
 ---
 <!-- A presentation region is delimited by ::: {.presentation} and :::.
 Each slide inside it is separated by `---` on

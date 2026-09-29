@@ -62,12 +62,25 @@
               } %>
       <% end %>
       <span class="workspace-crumbs__spacer"></span>
-      <%= link_to "New document", new_plan_path, class: "btn btn--primary btn--sm" %>
       <% if @can_write %>
-        <button type="button" class="btn btn--secondary btn--sm" popovertarget="new-folder-modal">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-          New folder
-        </button>
+        <span class="workspace-add" data-controller="coplan--menu">
+          <button type="button" class="btn btn--sm btn--icon workspace-add__trigger"
+                  popovertarget="workspace-add-menu" data-coplan--menu-target="trigger"
+                  aria-label="Add plan or folder" title="Add plan or folder">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div id="workspace-add-menu" popover="auto" class="menu workspace-add__menu" data-coplan--menu-target="menu"
+               data-action="toggle->coplan--menu#reposition" role="menu" aria-label="Add to this folder">
+            <button type="button" class="menu__item" role="menuitem" popovertarget="new-plan-modal" data-action="coplan--menu#close" autofocus>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+              Plan
+            </button>
+            <button type="button" class="menu__item" role="menuitem" popovertarget="new-folder-modal" data-action="coplan--menu#close">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 10v6M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              Folder
+            </button>
+          </div>
+        </span>
       <% end %>
     </nav>
 
@@ -86,6 +99,20 @@
     <% end %>
 
     <% if @can_write %>
+      <%= render layout: "coplan/shared/add_modal", locals: { id: "new-plan-modal", title: "Choose a plan type" } do %>
+        <div class="new-plan-types" data-controller="coplan--new-plan">
+          <% @creation_plan_types.each do |plan_type| %>
+            <%= link_to new_plan_path(plan_type_id: plan_type.id, folder_id: @folder&.id),
+                  class: "new-plan-types__button" do %>
+              <span class="new-plan-types__icon"><%= plan_type_icon(plan_type, size: :lg) %></span>
+              <strong class="new-plan-types__name"><%= plan_type.name %></strong>
+              <% if plan_type.description.present? %>
+                <small class="new-plan-types__description"><%= truncate(plan_type.description, length: 80, separator: " ") %></small>
+              <% end %>
+            <% end %>
+          <% end %>
+        </div>
+      <% end %>
       <%# Creates inside the folder you're looking at (changeable). %>
       <%= render layout: "coplan/shared/add_modal", locals: { id: "new-folder-modal", title: "New folder" } do %>
         <%# model: a fresh record — a bare scope: :folder would silently bind
@@ -142,11 +169,11 @@
 
     <% if @subfolders %>
       <% if @recent_updates.present? %>
-        <section class="recent-updates" aria-label="Changed since you last looked">
-          <h2 class="recent-updates__heading">
+        <details class="recent-updates" aria-label="Changed since you last looked">
+          <summary class="recent-updates__heading">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-            Since you last looked
-          </h2>
+            Since you last looked <span class="recent-updates__count"><%= pluralize(@recent_updates.size, "change") %></span>
+          </summary>
           <ul class="recent-updates__list">
             <% @recent_updates.each do |entry| %>
               <% plan = entry[:plan] %>
@@ -159,7 +186,7 @@
               </li>
             <% end %>
           </ul>
-        </section>
+        </details>
       <% end %>
 
       <%# Level view: this folder's subfolders (even empty — that's where
@@ -185,7 +212,7 @@
               <p class="text-muted text-sm">Drag a plan here from another folder, or file one from its plan page.</p>
             <% end %>
           <% elsif @can_write %>
-            <p>You haven't created any plans yet. Plans are created via the API.</p>
+            <p>You haven't created any plans yet. Use + to add one.</p>
           <% else %>
             <p>Nothing here yet.</p>
           <% end %>

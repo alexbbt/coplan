@@ -140,7 +140,7 @@
       <% if notice.present? %>
         <div class="flash flash--notice"><%= notice %></div>
       <% end %>
-      <% if alert.present? %>
+      <% if alert.present? && !(signed_in? && alert == "Please sign in.") %>
         <div class="flash flash--alert"><%= alert %></div>
       <% end %>
       <%= yield %>

@@ -137,9 +137,11 @@ RSpec.describe "Libraries", type: :request do
     it "offers the same filters, and no controls you can't use" do
       get "/bob"
 
-      expect(response.body).to include("Filters &amp; folders", "Read only")
+      expect(response.body).to include("Browse library", "Filters", "Read only")
       expect(response.body).to include(%(href="/bob?filter=archived"))
       expect(response.body).not_to include("New folder")
+      expect(response.body).not_to include("New document")
+      expect(response.body).not_to include("Add plan or folder")
       expect(response.body).not_to include("Show my private plans")
     end
 

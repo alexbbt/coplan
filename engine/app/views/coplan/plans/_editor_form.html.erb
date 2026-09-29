@@ -4,19 +4,24 @@
     class: "document-editor", id: (inline_editor ? "coplan-inline-editor-form" : nil), data: { controller: "coplan--editor", turbo: false, "coplan--editor-inline-value": inline_editor,
     action: "submit->coplan--editor#submit input->coplan--editor#input keydown->coplan--editor#keydown focusin->coplan--editor#focusPane compositionend->coplan--editor#compositionEnded beforeunload@window->coplan--editor#beforeUnload turbo:before-visit@document->coplan--editor#beforeVisit turbo:before-stream-render@document->coplan--editor#stream online@window->coplan--editor#reconnect focus@window->coplan--editor#refresh",
     "coplan--editor-plan-id-value": @plan.id || "new", "coplan--editor-user-id-value": current_user.id,
+    "coplan--editor-draft-scope-value": (creating ? "#{@new_plan_type&.id || 'general'}-#{@new_folder&.id || 'root'}" : ""),
     "coplan--editor-revision-value": @base_revision,
     "coplan--editor-state-url-value": creating ? "" : editor_state_plan_path(@plan),
     "coplan--editor-lease-url-value": creating ? "" : editor_lease_plan_path(@plan),
     "coplan--editor-preview-url-value": preview_draft_plans_path } do %>
+  <% if creating %>
+    <%= hidden_field_tag :plan_type_id, @new_plan_type&.id %>
+    <%= hidden_field_tag :folder_id, @new_folder&.id %>
+  <% end %>
   <div data-coplan--editor-target="subscription" hidden><%= turbo_stream_from @plan unless creating %></div>
   <% if inline_editor %>
     <%= hidden_field_tag "plan[title]", @plan.title, id: "inline-plan-title", required: true %>
     <%= hidden_field_tag "plan[tag_names]", @plan.tag_names.join(", "), id: "inline-plan-tags" %>
-    <%= link_to plan_browse_path(@plan), hidden: true, data: { "coplan--editor-target": "back" } do %>Close editor<% end %>
+    <%= link_to creating ? (@new_folder ? folder_browse_path(@new_folder) : library_browse_path(current_user.library)) : plan_browse_path(@plan), hidden: true, data: { "coplan--editor-target": "back" } do %>Close editor<% end %>
   <% else %>
   <div class="document-editor__top">
     <div class="document-editor__identity">
-      <%= text_field_tag "plan[title]", @plan.title, required: true, maxlength: 255, placeholder: "Untitled document", class: "document-editor__title", aria: { label: "Document title" } %>
+      <%= text_field_tag "plan[title]", @plan.title, required: true, maxlength: 255, autofocus: creating, placeholder: "Document title", class: "document-editor__title", aria: { label: "Document title" } %>
       <%= hidden_field_tag "plan[tag_names]", @plan.tag_names.join(", ") %>
     </div>
     <div class="document-editor__actions">
@@ -25,7 +30,7 @@
         <button type="button" aria-pressed="false" data-mode="markdown" data-action="coplan--editor#switchMode">Raw</button>
         <button type="button" aria-pressed="false" data-mode="dual" data-action="coplan--editor#switchMode">Dual</button>
       </div>
-      <%= link_to creating ? library_browse_path(current_user.library) : plan_browse_path(@plan), class: "document-editor__back", title: "Close editor", aria: { label: "Close editor" }, data: { turbo: true, turbo_prefetch: false, action: "click->coplan--editor#back", "coplan--editor-target": "back" } do %>
+      <%= link_to creating ? (@new_folder ? folder_browse_path(@new_folder) : library_browse_path(current_user.library)) : plan_browse_path(@plan), class: "document-editor__back", title: "Close editor", aria: { label: "Close editor" }, data: { turbo: true, turbo_prefetch: false, action: "click->coplan--editor#back", "coplan--editor-target": "back" } do %>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>
       <% end %>
     </div>
@@ -86,8 +91,9 @@
     <% if inline_editor %>
       <button type="button" class="document-editor__more-tools" aria-label="More formatting tools" title="More formatting tools" data-coplan--editor-target="moreTools" data-action="coplan--editor#scrollTools" hidden>›</button>
       <div class="document-editor__mode document-editor__inline-mode" role="group" aria-label="Editing mode">
-        <button type="button" aria-label="Switch to Markdown" title="Switch to Markdown" data-mode="markdown" data-action="coplan--editor#switchMode"><span aria-hidden="true">&lt;/&gt;</span><span>Markdown</span></button>
-        <button type="button" aria-label="Switch to editor" title="Switch to editor" data-mode="rich" data-action="coplan--editor#switchMode" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/></svg><span>Editor</span></button>
+        <button type="button" aria-pressed="true" data-mode="rich" data-action="coplan--editor#switchMode">Editor</button>
+        <button type="button" aria-pressed="false" data-mode="markdown" data-action="coplan--editor#switchMode">Raw</button>
+        <button type="button" aria-pressed="false" data-mode="dual" data-action="coplan--editor#switchMode">Dual</button>
       </div>
       <button type="button" class="document-editor__close-inline" data-state="loading" aria-label="Opening document" aria-describedby="coplan-inline-save-announcement" title="Opening document…" data-action="coplan--editor#back" disabled>
         <svg class="document-editor__close-icon" width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 12 5 5 10-10"/></svg>

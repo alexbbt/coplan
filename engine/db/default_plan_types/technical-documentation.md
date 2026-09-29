@@ -1,11 +1,7 @@
 ---
 name: Technical Documentation
 icon: wrench
-description: >-
-  Reference for something that exists: an interface, a command set, a
-  data model, how a system behaves today. Describes what IS. The reader
-  is mid-task and needs the fact fast. Proposing a change instead?
-  That's an Engineering Design.
+description: How an existing system or interface works.
 ---
 <!-- Technical Documentation: reference for what exists today. Organize
 for lookup, not narrative - tables beat prose. Anchor freshness to

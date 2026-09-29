@@ -16,7 +16,7 @@ RSpec.describe "Editor code caret", type: :system do
   it "advances the visible caret for each Enter in a newly inserted javascript block" do
     visit new_plan_path
     expect(page).to have_css('.ProseMirror[contenteditable=true]', wait: 20)
-    fill_in "plan_title", with: "Caret regression"
+    find("#plan-header .inline-editor__title", wait: 10).send_keys("Caret regression")
     click_button "Insert code block"
     fill_in "coplan-insert-language", with: "javascript"
     click_button "Insert", exact: true
@@ -52,8 +52,10 @@ RSpec.describe "Editor code caret", type: :system do
     prior = caret
     page.driver.browser.action.send_keys(:enter).perform
     expect(caret["rect"]["top"]).to be > prior["rect"]["top"]
-    click_link "Close editor"
     created = CoPlan::Plan.find_by!(title: "Caret regression")
+    expect(page).to have_current_path(plan_page_path(created, edit: "continue"), wait: 15)
+    expect(page).to have_css(".inline-editor form.document-editor", visible: true, wait: 15)
+    within("#plan-toolbar") { click_link "Done" }
     expect(page).to have_current_path(plan_page_path(created), wait: 10)
     expect(created.reload.current_content).to include("```typescript", "function hi() {", "return 1")
   end

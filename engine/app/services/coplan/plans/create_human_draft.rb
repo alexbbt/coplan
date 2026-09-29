@@ -2,14 +2,16 @@ module CoPlan
   module Plans
     class CreateHumanDraft
       class InvalidKey < StandardError; end
+      class PlacementFailed < StandardError; end
       KEY_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
 
-      def self.call(user:, title:, content:, tags:, creation_key: nil)
-        new(user:, title:, content:, tags:, creation_key:).call
+      def self.call(user:, title:, content:, tags:, creation_key: nil, plan_type: nil, folder: nil)
+        new(user:, title:, content:, tags:, creation_key:, plan_type:, folder:).call
       end
 
-      def initialize(user:, title:, content:, tags:, creation_key:)
+      def initialize(user:, title:, content:, tags:, creation_key:, plan_type:, folder:)
         @user, @title, @content, @tags, @creation_key = user, title, content, tags, creation_key
+        @plan_type, @folder = plan_type, folder
       end
 
       def call
@@ -22,9 +24,14 @@ module CoPlan
         @user.with_lock do
           existing = @user.created_plans.find_by(creation_key: @creation_key) if @creation_key
           next existing if existing
-          plan = Create.call(title: @title, content: @content, user: @user, visibility: "draft", actor_type: "human", creation_key: @creation_key)
-          plan.tag_names = @tags.to_s.split(",")
+          plan = Create.call(title: @title, content: @content, user: @user, plan_type_id: @plan_type&.id,
+            visibility: "draft", actor_type: "human", creation_key: @creation_key)
+          plan.tag_names = @plan_type&.default_tags.to_a | @tags.to_s.split(",").map(&:strip).reject(&:blank?)
           plan.save!
+          if @folder
+            result = Place.call(plan: plan, folder: @folder, actor: @user)
+            raise PlacementFailed, result.error unless result.success?
+          end
           plan
         end
       end

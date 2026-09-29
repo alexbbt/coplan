@@ -1,40 +1,18 @@
-<aside id="workspace-sidebar" class="workspace__sidebar" aria-label="Plan filters"
+<aside id="workspace-sidebar" class="workspace__sidebar" aria-label="Library navigation"
        data-controller="coplan--sidebar-toggle">
-  <%# Mobile: the sidebar collapses into this bar; ≥768px the button hides
-      and the sections are always shown. %>
   <button type="button" class="workspace__sidebar-toggle"
           data-coplan--sidebar-toggle-target="button"
           data-action="coplan--sidebar-toggle#toggle" aria-expanded="false"
           aria-controls="workspace-sidebar-sections">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-    Filters &amp; folders
-    <svg class="workspace__sidebar-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+    Browse library
+    <svg class="workspace__sidebar-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
   </button>
 
   <div class="workspace__sidebar-sections" id="workspace-sidebar-sections"
        data-coplan--sidebar-toggle-target="sections">
-    <% visible_types = (@plan_types || []).select { |pt| @type_counts[pt.id].to_i.positive? || params[:plan_type] == pt.id } %>
-    <% if visible_types.any? %>
-      <div class="sidebar__section">
-        <h3 class="sidebar__heading">Types</h3>
-        <ul class="sidebar__list">
-          <% visible_types.each do |pt| %>
-            <li>
-              <%= link_to workspace_path(plan_type: params[:plan_type] == pt.id ? nil : pt.id),
-                    class: "sidebar__item #{'sidebar__item--active' if params[:plan_type] == pt.id}" do %>
-                <span class="sidebar__item-label"><%= pt.name %></span>
-                <span class="sidebar__count"><%= @type_counts[pt.id].to_i %></span>
-              <% end %>
-            </li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-
     <div class="sidebar__section">
       <h3 class="sidebar__heading">Folders</h3>
-      <%# The root of the library being browsed; every folder is its child,
-          the way a drive hangs everything off one root. %>
       <ul class="folder-tree folder-tree--rooted">
         <li class="folder-tree__node folder-tree__node--root">
           <%= link_to workspace_path(folder: nil),
@@ -54,81 +32,74 @@
           <% end %>
         </li>
       </ul>
-
-      <% if @folders.empty? && @can_write %>
-        <p class="sidebar__hint text-muted text-sm">
-          Folders keep related plans together — like a team folder with project subfolders. Create one with “New folder” above your plans.
-        </p>
-      <% end %>
     </div>
 
-    <% if @top_tags.present? %>
-      <div class="sidebar__section">
-        <h3 class="sidebar__heading">Tags</h3>
-        <ul class="sidebar__list">
-          <% @top_tags.each do |name, count| %>
-            <li>
-              <%= link_to workspace_path(tag: params[:tag] == name ? nil : name),
-                    class: "sidebar__item #{'sidebar__item--active' if params[:tag] == name}" do %>
-                <span class="sidebar__item-label">#<%= name %></span>
-                <span class="sidebar__count"><%= count %></span>
+    <% filter_active = params[:tag].present? || params[:plan_type].present? || params[:updated].present? || params[:filter].present? %>
+    <details class="sidebar__filters" <%= "open" if filter_active %>>
+      <summary class="sidebar__filters-toggle">Filters<%= " · Active" if filter_active %></summary>
+      <div class="sidebar__filters-content">
+        <% visible_types = (@plan_types || []).select { |pt| @type_counts[pt.id].to_i.positive? || params[:plan_type] == pt.id } %>
+        <% if visible_types.any? %>
+          <div class="sidebar__section">
+            <h3 class="sidebar__heading">Types</h3>
+            <ul class="sidebar__list">
+              <% visible_types.each do |pt| %>
+                <li><%= link_to workspace_path(plan_type: params[:plan_type] == pt.id ? nil : pt.id),
+                      class: "sidebar__item #{'sidebar__item--active' if params[:plan_type] == pt.id}" do %>
+                  <span class="sidebar__item-label"><%= pt.name %></span>
+                  <span class="sidebar__count"><%= @type_counts[pt.id].to_i %></span>
+                <% end %></li>
               <% end %>
-            </li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-
-    <%# Same rule as tags/types: count = what clicking shows given the other
-        active filters; zero-count windows drop out (unless active, so the
-        filter can still be cleared). %>
-    <% visible_windows = [["7d", "Last 7 days"], ["30d", "Last 30 days"]]
-         .select { |w, _| @updated_counts[w].to_i.positive? || @updated_window == w } %>
-    <% if visible_windows.any? %>
-      <div class="sidebar__section">
-        <h3 class="sidebar__heading">Updated</h3>
-        <ul class="sidebar__list">
-          <% visible_windows.each do |window, label| %>
-            <li>
-              <%= link_to workspace_path(updated: @updated_window == window ? nil : window),
-                    class: "sidebar__item #{'sidebar__item--active' if @updated_window == window}" do %>
-                <span class="sidebar__item-label"><%= label %></span>
-                <span class="sidebar__count"><%= @updated_counts[window].to_i %></span>
-              <% end %>
-            </li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-
-    <div class="sidebar__section">
-      <%# Every library you can see has its own address now (/<handle>), so
-          this section is only about what's tucked away inside *this* one.
-          (?scope=all still works as a link target, e.g. from Home's tags.) %>
-      <h3 class="sidebar__heading">Hidden</h3>
-      <ul class="sidebar__list">
-        <% if @can_write %>
-          <li>
-            <%# These read as reveals, not filters: private and archived plans
-                are excluded by default, and clicking opts IN to seeing them
-                ("show me my private plans"), click again to tuck them away. %>
-            <%# "Private" is visibility, not workflow: not shared with the org,
-                still readable by link. Stored as visibility=draft. %>
-            <%# Only offered in your own library: a private plan is unlisted to
-                everyone else, so the filter would always come back empty. %>
-            <%= link_to @filter == "draft" ? "Showing private" : "Show my private plans",
-                  workspace_path(filter: @filter == "draft" ? nil : "private"),
-                  class: "sidebar__item #{'sidebar__item--active' if @filter == 'draft'}" %>
-          </li>
+            </ul>
+          </div>
         <% end %>
-        <li>
-          <%# Archived plans are hidden everywhere else — this is the explicit
-              opt-in view. %>
-          <%= link_to @filter == "archived" ? "Showing archived" : "Show archived",
-                workspace_path(filter: @filter == "archived" ? nil : "archived"),
-                class: "sidebar__item sidebar__item--archived #{'sidebar__item--active' if @filter == 'archived'}" %>
-        </li>
-      </ul>
-    </div>
+
+        <% if @top_tags.present? %>
+          <div class="sidebar__section">
+            <h3 class="sidebar__heading">Tags</h3>
+            <ul class="sidebar__list">
+              <% @top_tags.each do |name, count| %>
+                <li><%= link_to workspace_path(tag: params[:tag] == name ? nil : name),
+                      class: "sidebar__item #{'sidebar__item--active' if params[:tag] == name}" do %>
+                  <span class="sidebar__item-label">#<%= name %></span>
+                  <span class="sidebar__count"><%= count %></span>
+                <% end %></li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+
+        <% visible_windows = [["7d", "Last 7 days"], ["30d", "Last 30 days"]]
+             .select { |window, _| @updated_counts[window].to_i.positive? || @updated_window == window } %>
+        <% if visible_windows.any? %>
+          <div class="sidebar__section">
+            <h3 class="sidebar__heading">Updated</h3>
+            <ul class="sidebar__list">
+              <% visible_windows.each do |window, label| %>
+                <li><%= link_to workspace_path(updated: @updated_window == window ? nil : window),
+                      class: "sidebar__item #{'sidebar__item--active' if @updated_window == window}" do %>
+                  <span class="sidebar__item-label"><%= label %></span>
+                  <span class="sidebar__count"><%= @updated_counts[window].to_i %></span>
+                <% end %></li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+
+        <div class="sidebar__section">
+          <h3 class="sidebar__heading">Hidden</h3>
+          <ul class="sidebar__list">
+            <% if @can_write %>
+              <li><%= link_to @filter == "draft" ? "Showing private" : "Show my private plans",
+                    workspace_path(filter: @filter == "draft" ? nil : "private"),
+                    class: "sidebar__item #{'sidebar__item--active' if @filter == 'draft'}" %></li>
+            <% end %>
+            <li><%= link_to @filter == "archived" ? "Showing archived" : "Show archived",
+                  workspace_path(filter: @filter == "archived" ? nil : "archived"),
+                  class: "sidebar__item sidebar__item--archived #{'sidebar__item--active' if @filter == 'archived'}" %></li>
+          </ul>
+        </div>
+      </div>
+    </details>
   </div>
 </aside>

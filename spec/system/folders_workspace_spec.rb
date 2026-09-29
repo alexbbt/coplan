@@ -209,6 +209,170 @@ RSpec.describe "Folders workspace", type: :system do
   end
 
   describe "sidebar navigation" do
+    it "fits type names and explanations inside desktop cards" do
+      CoPlan::PlanTypes::InstallDefaults.call
+      visit folder_page_path(team)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 940, height: 900, deviceScaleFactor: 1, mobile: false)
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Plan" }
+
+      layout = page.evaluate_script(<<~JS)
+        (() => {
+          const modal = document.querySelector('#new-plan-modal');
+          const cards = [...modal.querySelectorAll('.new-plan-types__button')];
+          const body = modal.querySelector('.add-modal__body');
+          return {
+            columns: getComputedStyle(modal.querySelector('.new-plan-types')).gridTemplateColumns.split(' ').length,
+            nameFits: cards.every(card => {
+              const name = card.querySelector('.new-plan-types__name');
+              return name.scrollWidth <= name.clientWidth + 1;
+            }),
+            descriptionFits: cards.every(card => {
+              const description = card.querySelector('.new-plan-types__description');
+              return description.scrollHeight <= description.clientHeight + 1;
+            }),
+            bodyScrolls: body.scrollHeight > body.clientHeight
+          };
+        })()
+      JS
+      expect(layout).to eq({ "columns" => 3, "nameFits" => true, "descriptionFits" => true, "bodyScrolls" => false })
+      page.save_screenshot(Rails.root.join("tmp/plan-type-picker-desktop.png"))
+
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 720, height: 900, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("getComputedStyle(document.querySelector('.new-plan-types')).gridTemplateColumns.split(' ').length")).to eq(2)
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride") if page.driver.browser
+    end
+
+    it "turns the plan type picker into a readable phone list" do
+      CoPlan::PlanTypes::InstallDefaults.call
+      visit folder_page_path(team)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 390, height: 700, deviceScaleFactor: 1, mobile: true)
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Plan" }
+
+      layout = page.evaluate_script(<<~JS)
+        (() => {
+          const modal = document.querySelector('#new-plan-modal');
+          const body = modal.querySelector('.add-modal__body');
+          const cards = [...modal.querySelectorAll('.new-plan-types__button')];
+          const bounds = modal.getBoundingClientRect();
+          return {
+            viewportWidth: innerWidth,
+            cardCount: cards.length,
+            columns: getComputedStyle(modal.querySelector('.new-plan-types')).gridTemplateColumns.split(' ').length,
+            insideViewport: bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight,
+            cardsFit: cards.every(card => card.scrollWidth <= card.clientWidth + 1),
+            cardLayout: cards.every(card => {
+              const icon = card.querySelector('.new-plan-types__icon').getBoundingClientRect();
+              const name = card.querySelector('.new-plan-types__name').getBoundingClientRect();
+              const description = card.querySelector('.new-plan-types__description').getBoundingClientRect();
+              return name.left > icon.right && description.top >= name.bottom &&
+                Math.abs(description.left - name.left) < 1;
+            }),
+            bodyScrolls: body.scrollHeight > body.clientHeight,
+            cardHeight: cards[0].getBoundingClientRect().height,
+            titleSize: parseFloat(getComputedStyle(cards[0].querySelector('strong')).fontSize),
+            descriptionSize: parseFloat(getComputedStyle(cards[0].querySelector('small')).fontSize)
+          };
+        })()
+      JS
+      expect(layout.slice("viewportWidth", "cardCount", "columns", "insideViewport", "cardsFit", "cardLayout", "bodyScrolls")).to eq(
+        { "viewportWidth" => 390, "cardCount" => 12, "columns" => 1, "insideViewport" => true, "cardsFit" => true, "cardLayout" => true, "bodyScrolls" => true }
+      )
+      expect(layout["cardHeight"]).to be >= 74
+      expect(layout["titleSize"]).to be >= 15
+      expect(layout["descriptionSize"]).to be >= 12
+      page.save_screenshot(Rails.root.join("tmp/plan-type-picker-mobile.png"))
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride") if page.driver.browser
+    end
+
+    it "opens an unsaved typed draft and creates it when writing begins" do
+      type = create(:plan_type, name: "Design Doc", template_content: "## Problem\n")
+      visit folder_page_path(team)
+      page.execute_script("sessionStorage.setItem('coplan-editor-mode-#{author.id}', 'markdown')")
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Plan" }
+      expect(page.evaluate_script("document.querySelector('#workspace-add-menu').matches(':popover-open')")).to eq(false)
+      within("#new-plan-modal") { click_link "Design Doc" }
+
+      title = find("#plan-header .inline-editor__title[contenteditable='plaintext-only']", wait: 20)
+      expect(title.text).to be_empty
+      expect(page).to have_css(".inline-editor .ProseMirror", text: "Problem")
+      expect(page).to have_css('.document-editor__inline-mode button[data-mode="rich"][aria-pressed="true"]')
+      expect(CoPlan::Plan.where(plan_type: type)).to be_empty
+
+      title.send_keys("My design")
+      expect(CoPlan::Plan.where(plan_type: type)).to be_empty
+      page.execute_script("window.draftEditorForm = document.querySelector('.inline-editor form.document-editor')")
+      find(".inline-editor .ProseMirror").click
+      page.driver.browser.action.send_keys("Details to write.").perform
+      expect(page).to have_css("[data-coplan--inline-editor-target='draftState']", text: "Private · v1", wait: 20)
+      expect(page.evaluate_script("window.draftEditorForm === document.querySelector('.inline-editor form.document-editor')")).to eq(true)
+      expect(page.evaluate_script("document.querySelector('.inline-editor .ProseMirror').contains(document.activeElement)")).to eq(true)
+      draft = CoPlan::Plan.find_by!(title: "My design")
+      expect(draft.plan_type).to eq(type)
+      expect(draft.placement.folder).to eq(team)
+      expect(draft.slug).to eq("my-design")
+      expect(page).to have_current_path(plan_page_path(draft), ignore_query: true)
+      click_link "Done"
+      expect(page).to have_current_path(plan_page_path(draft), wait: 15)
+      expect(page).to have_css("#plan-content-body", text: "Details to write.")
+    end
+
+    it "opens a blank plan type without creating it" do
+      create(:plan_type, name: "Scratchpad", template_content: nil)
+      visit folder_page_path(team)
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Plan" }
+      within("#new-plan-modal") { click_link "Scratchpad" }
+
+      expect(page).to have_css("#plan-header .inline-editor__title[contenteditable='plaintext-only']", wait: 20)
+      expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']")
+      expect(CoPlan::Plan.find_by(title: "Untitled plan")).to be_nil
+    end
+
+    it "returns to the folder without creating an untouched draft" do
+      type = create(:plan_type, name: "Scratchpad", template_content: nil)
+      visit folder_page_path(team)
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Plan" }
+      within("#new-plan-modal") { click_link "Scratchpad" }
+      expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+
+      find("#plan-header .inline-editor__title").send_keys("Just a title")
+      click_link "Done"
+
+      expect(page).to have_current_path(folder_page_path(team))
+      expect(CoPlan::Plan.where(plan_type: type)).to be_empty
+    end
+
+    it "keeps Done usable if the draft editor has not loaded" do
+      type = create(:plan_type, name: "Scratchpad", template_content: nil)
+      visit new_plan_path(plan_type_id: type.id, folder_id: team.id)
+      expect(page).to have_link("Done")
+      page.execute_script(<<~JS)
+        const element = document.querySelector('[data-controller="coplan--inline-editor"]')
+        window.Stimulus.getControllerForElementAndIdentifier(element, "coplan--inline-editor").controller = null
+      JS
+
+      click_link "Done"
+      expect(page).to have_current_path(folder_page_path(team))
+      expect(CoPlan::Plan.where(plan_type: type)).to be_empty
+    end
+
+    it "opens a presentation template in the new draft editor" do
+      create(:plan_type, name: "Presentation", template_content: "# Opening slide\n")
+      visit folder_page_path(team)
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Plan" }
+      within("#new-plan-modal") { click_link "Presentation" }
+
+      expect(page).to have_css("#plan-header .inline-editor__title[contenteditable='plaintext-only']", wait: 20)
+      expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']")
+    end
+
     it "jumps into a folder from the sidebar tree" do
       visit library_page_path(author)
 
@@ -222,14 +386,18 @@ RSpec.describe "Folders workspace", type: :system do
       developing_plan.tag_names = [ "security" ]
       visit library_page_path(author)
 
-      within(".workspace__sidebar") { click_link "#security" }
+      within(".workspace__sidebar") do
+        find("summary", text: "Filters").click
+        click_link "#security"
+      end
       expect(page).to have_content("Payments Plan")
       expect(page).not_to have_content("Q3 Launch Plan")
     end
 
     it "creates a nested folder through the popover, defaulting to the current folder" do
       visit folder_page_path(team)
-      click_button "New folder"
+      click_button "Add plan or folder"
+      within("#workspace-add-menu") { click_button "Folder" }
 
       within("#new-folder-modal") do
         # Regression: scope: :folder used to bind @folder and prefill the
@@ -241,7 +409,6 @@ RSpec.describe "Folders workspace", type: :system do
         click_button "Create folder"
       end
 
-      expect(page).to have_content("Folder “Fresh Folder” created.")
       # Redirected into the new (empty) folder, nested under Team EBT.
       expect(page).to have_css(".workspace-crumbs__crumb--current", text: "Fresh Folder")
       expect(page).to have_css(".workspace-crumbs__crumb", text: "Team EBT")

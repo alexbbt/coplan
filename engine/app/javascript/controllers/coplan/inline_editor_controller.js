@@ -6,8 +6,18 @@ import { captureDeckPositions, restoreDeckPositions } from "coplan/deck_state"
 // The server-rendered body stays available behind the editor and is refreshed
 // before returning to read mode, so closing never navigates or shows old text.
 export default class extends Controller {
-  static targets = ["reader", "editor", "template", "trigger", "error"]
-  static values = { contentUrl: String, commentsUrl: String }
+  static targets = ["reader", "editor", "template", "trigger", "error", "draftState"]
+  static values = { contentUrl: String, commentsUrl: String, autoOpen: Boolean, focusTitle: Boolean, draft: Boolean }
+
+  connect() {
+    if (this.draftValue) {
+      this.loading = true
+      this.headerVisible = true
+      this.openScrollY = window.scrollY
+      return
+    }
+    if (this.autoOpenValue) queueMicrotask(() => this.open())
+  }
 
   open(event) {
     if (!this.hasReaderTarget || !this.hasEditorTarget || !this.hasTemplateTarget) {
@@ -45,21 +55,40 @@ export default class extends Controller {
     this.editing = true
     this.loading = false
     this.setTriggers(false)
-    if (!this.headerVisible) restoreViewport(this.editorTarget, this.anchor)
-    this.controller.showInline(this.anchor, { focus: !this.headerVisible })
+    this.controller.showInline(this.anchor, { focus: !this.headerVisible || (this.autoOpenValue && !this.focusTitleValue) })
     this.element.dataset.editing = "true"
     this.mountTitle()
+    if (this.autoOpenValue && this.focusTitleValue) {
+      const title = this.element.querySelector("#plan-header .inline-editor__title")
+      title?.focus()
+      const selection = window.getSelection()
+      const range = document.createRange()
+      if (title && selection) {
+        range.selectNodeContents(title)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
+    this.autoOpenValue = false
     if (this.headerVisible) window.scrollTo({ top: this.openScrollY, behavior: "instant" })
     this.headerObserver = new MutationObserver(() => this.mountTitle())
     const masthead = this.element.querySelector(".plan-masthead")
     if (masthead) this.headerObserver.observe(masthead, { childList: true })
-    this.updateOutline()
+    if (!this.draftValue) this.updateOutline()
     const sticky = document.querySelector(".site-nav__edit")
     if (sticky) sticky.dataset.editing = "true"
+    // Focus and mounting the inline title can move the page. Restore the
+    // passage after both have finished changing the layout.
+    if (!this.headerVisible) restoreViewport(this.editorTarget, this.anchor)
   }
 
   async closed(event) {
     if (!this.editing || this.closing || event.detail.controller !== this.controller) return
+    if (this.draftValue) {
+      this.controller.leaving = true
+      window.Turbo.visit(this.controller.backTarget.href, { action: "replace" })
+      return
+    }
     this.closing = true
     this.setTriggers(true)
     this.editorTarget.inert = true
@@ -93,6 +122,11 @@ export default class extends Controller {
         canonicalUrl.hash = window.location.hash
         window.history.replaceState(window.history.state, "", canonicalUrl.href)
       }
+      if (new URL(window.location.href).searchParams.has("edit")) {
+        const url = new URL(window.location.href)
+        url.searchParams.delete("edit")
+        window.history.replaceState(window.history.state, "", url.href)
+      }
       this.editorTarget.querySelector("form.document-editor")?.remove()
       this.controller = null
       this.editing = false
@@ -106,6 +140,18 @@ export default class extends Controller {
     } catch (error) {
       this.controller?.fail(`${error.name === "AbortError" ? "The reading view timed out" : error.message}. The editor remains open with your saved draft.`)
     } finally { clearTimeout(timeout); this.editorTarget.inert = false; this.closing = false; this.setTriggers(false) }
+  }
+
+  finishDraft(event) {
+    if (!this.controller) return
+    event.preventDefault()
+    this.controller.closeInline()
+  }
+
+  draftSaved(event) {
+    if (!this.draftValue || !this.hasDraftStateTarget) return
+    this.draftStateTarget.textContent = `Private · v${event.detail.revision}`
+    document.title = `${this.controller.snapshot().title} — CoPlan`
   }
 
   async refreshThreads() {
@@ -177,8 +223,9 @@ export default class extends Controller {
     input.setAttribute("role", "textbox")
     input.setAttribute("aria-label", "Document title")
     input.setAttribute("aria-multiline", "false")
+    if (this.draftValue) input.setAttribute("data-placeholder", "Document title")
     input.dataset.action = "input->coplan--inline-editor#titleChanged paste->coplan--inline-editor#titlePaste keydown->coplan--inline-editor#titleKeydown"
-    input.textContent = this.controller?.element.querySelector('[name="plan[title]"]')?.value || heading.textContent.trim()
+    input.textContent = this.controller?.element.querySelector('[name="plan[title]"]')?.value ?? heading.textContent.trim()
     heading.hidden = true
     heading.after(input)
   }

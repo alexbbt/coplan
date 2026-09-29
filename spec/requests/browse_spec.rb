@@ -130,8 +130,7 @@ RSpec.describe "Browsable library URLs", type: :request do
     end
   end
 
-  # A document's own pages hang off its address, so trimming "/edit" off
-  # the editor's URL lands on the thing being edited.
+  # Legacy edit links land on the document's inline editor.
   describe "a document's sub-pages" do
     let!(:folder) { create(:folder, name: "LiveOrder", created_by_user: author) }
     let!(:plan) do
@@ -141,12 +140,11 @@ RSpec.describe "Browsable library URLs", type: :request do
 
     before { sign_in_as(author) }
 
-    it "serves the editor" do
+    it "redirects the old editor URL to inline editing" do
       get "/hampton/liveorder/cart-roadmap/edit"
 
-      expect(response).to have_http_status(:ok)
-      modes = Nokogiri::HTML(response.body).css('[aria-label="Editing mode"] button').map(&:text)
-      expect(modes).to eq([ "Editor", "Raw", "Dual" ])
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response.headers["Location"]).to end_with("/hampton/liveorder/cart-roadmap?edit=1")
     end
 
     it "serves the history page" do

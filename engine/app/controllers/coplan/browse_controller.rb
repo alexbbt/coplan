@@ -5,7 +5,7 @@ module CoPlan
   #   /sam                             Sam, and Sam's library
   #   /sam/liveorder                   a folder
   #   /sam/liveorder/cart-roadmap      a document
-  #   /sam/liveorder/cart-roadmap/edit the document's editor
+  #   /sam/liveorder/cart-roadmap/edit redirects to inline editing
   #
   # Every prefix is a real page, so trimming a segment off any URL walks
   # you up the tree. One action serves all of them because they are one
@@ -23,7 +23,7 @@ module CoPlan
     # inherited action that renders it and the template it renders.
     # Anything not in here is a plain document page.
     PAGES = {
-      "edit" => { action: :edit_content, template: "coplan/plans/edit_content" },
+      "edit" => { action: :redirect_legacy_edit },
       "history" => { action: :history, template: "coplan/plans/history" },
       "version" => { action: :version, template: "coplan/plan_versions/show" },
       # A bare fragment: the history page loads it into a turbo-frame.
@@ -106,6 +106,11 @@ module CoPlan
       target = page || { action: :show, template: "coplan/plans/show" }
       send(target[:action])
       render target[:template], layout: target.fetch(:layout, true) unless performed?
+    end
+
+    def redirect_legacy_edit
+      authorize!(@plan, :edit_content?)
+      redirect_to helpers.plan_browse_path(@plan, edit: 1), status: :moved_permanently
     end
 
     # Every library renders the same page. What you can do to what's in it

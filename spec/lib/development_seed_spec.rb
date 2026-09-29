@@ -3,6 +3,17 @@ require Rails.root.join("db/seeds/development")
 
 RSpec.describe CoPlan::DevelopmentSeed do
   describe ".call" do
+    it "retires old demo-only types while preserving their existing documents" do
+      old_type = create(:plan_type, name: "RFC")
+      existing = create(:plan, plan_type: old_type)
+
+      described_class.call
+
+      expect(old_type.reload).to be_retired_from_creation
+      expect(existing.reload.plan_type).to eq(old_type)
+      expect(CoPlan::PlanType.creation_order(CoPlan::PlanType.all).size).to eq(12)
+    end
+
     it "creates a varied, idempotent development dataset" do
       described_class.call
 
@@ -45,6 +56,7 @@ RSpec.describe CoPlan::DevelopmentSeed do
       expect(seeded_plans.map(&:visibility)).to include("draft", "published")
       expect(seeded_plans).to include(be_archived)
       expect(seeded_plans.map { |plan| plan.plan_type.name }.uniq.size).to be >= 7
+      expect(CoPlan::PlanType.pluck(:name).sort).to eq(CoPlan::PlanType::CREATION_ORDER.sort)
       expect(seeded_plans.flat_map(&:tag_names).uniq.size).to be >= 12
       expect(seeded_plans.map(&:title)).to include(a_string_matching(/信頼性/), a_string_matching(/تقليل/))
 

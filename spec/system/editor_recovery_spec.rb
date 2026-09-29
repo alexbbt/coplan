@@ -83,8 +83,8 @@ RSpec.describe "Editor draft recovery", type: :system do
     store("coplan-rich-draft-#{author.id}-#{plan.id}-existing", base.merge(title: "", base: base))
     visit plan_edit_page_path(plan)
     rich
-    expect(find("#plan_title").value).to eq("")
-    expect(page).to have_content("Add a title to save this draft")
+    expect(find("#plan-header .inline-editor__title").text).to eq("")
+    expect(page).to have_content("Add a document title to save")
     expect(plan.reload.title).to eq("Recovery")
   end
 
@@ -99,7 +99,7 @@ RSpec.describe "Editor draft recovery", type: :system do
         return response;
       };
     JS
-    find("#plan_title").send_keys("One document")
+    find("#plan-header .inline-editor__title", wait: 10).send_keys("One document")
     click_button "Raw", exact: true
     raw = find('[aria-label="Markdown source"]')
     raw.send_keys("First draft")
@@ -107,7 +107,9 @@ RSpec.describe "Editor draft recovery", type: :system do
     created = author.created_plans.find_by!(title: "One document")
     raw.send_keys(:right, " and newer typing")
     page.refresh
-    expect(find('[aria-label="Markdown source"]', wait: 20)).to have_text("First draft and newer typing")
+    raw = find('[aria-label="Markdown source"]', wait: 20)
+    expect(raw).to have_text("First draft and newer typing")
+    raw.click
     page.driver.browser.action.key_down(mod).send_keys("s").key_up(mod).perform
     expect(page).to have_content("All changes saved · v2", wait: 15)
     expect(author.created_plans.where(title: "One document").count).to eq(1)

@@ -6,7 +6,7 @@ import { commandFor } from "coplan/shortcuts"
 // until the server has acknowledged that exact content.
 export default class extends Controller {
   static targets = ["textarea", "surface", "status", "statusText", "statusAnnouncement", "back", "rawSurface", "toolbar", "formatControls", "moreTools", "newLanguage", "codePicker", "codeOption", "draftNotice", "legacyDraftNotice", "conflict", "error", "replace", "latest", "style", "subscription"]
-  static values = { planId: String, userId: String, revision: Number, stateUrl: String, previewUrl: String, leaseUrl: String, inline: Boolean }
+  static values = { planId: String, userId: String, draftScope: String, revision: Number, stateUrl: String, previewUrl: String, leaseUrl: String, inline: Boolean }
 
   async connect() {
     this.active = true
@@ -48,10 +48,12 @@ export default class extends Controller {
         this.toolResizeObserver.observe(this.formatControlsTarget)
         requestAnimationFrame(() => this.updateToolOverflow())
       }
-      if (!this.inlineValue) {
+      // Fresh inline drafts open as the document itself. A recovered draft
+      // restores the mode in which the author was working.
+      if (!this.inlineValue || !this.isNew || this.recoveredDraft) {
         try { this.setMode(sessionStorage.getItem(`coplan-editor-mode-${this.userIdValue}`) || "rich") } catch {}
       }
-      if (!this.blocked) this.setStatus(this.dirty() ? "Recovered draft · waiting to sync" : this.isNew ? "Private draft" : `All changes saved · v${this.base.revision}`)
+      if (!this.blocked) this.setStatus(this.dirty() ? "Recovered draft · waiting to sync" : this.isNew ? "Start writing to create this plan" : `All changes saved · v${this.base.revision}`)
       // Retire leases from the previous prototype, without acquiring one.
       if (this.leaseUrlValue) await this.request(this.leaseUrlValue, "DELETE", {}).catch(() => {})
       if (!this.active) return
@@ -143,7 +145,12 @@ export default class extends Controller {
   async flush(manual = false, overwriteRevision = null) {
     clearTimeout(this.saveTimer)
     if (this.editor && !this.isNew && !this.dirty() && !overwriteRevision) return true
-    if (this.isNew && !manual && !this.textareaTarget.value.trim()) { this.setStatus("Add document content to save", "idle"); return false }
+    // A selected type may prefill a template. Choosing it or typing only a
+    // title is still a local draft; the first content edit creates the plan.
+    if (this.isNew && !manual && this.textareaTarget.value === this.base.content) {
+      this.setStatus("Start writing to create this plan", "idle")
+      return false
+    }
     if (!this.editor) return this.fail("The editor is still loading. Your draft is retained.")
     if (this.composing) { this.scheduleSave(250); return }
     if (this.busy) {
@@ -164,6 +171,8 @@ export default class extends Controller {
     try {
       const result = await this.request(this.element.action, this.isNew ? "POST" : "PATCH", {
         creation_key: this.isNew ? this.creationKey : undefined,
+        plan_type_id: this.isNew ? this.element.querySelector('[name="plan_type_id"]')?.value : undefined,
+        folder_id: this.isNew ? this.element.querySelector('[name="folder_id"]')?.value : undefined,
         content: sent.content, plan: { title: sent.title, tag_names: sent.tags },
         base_revision: sentBase.revision, base_metadata: { title: overwriteRevision ? this.pendingRemote.title : sentBase.title, tag_names: overwriteRevision ? this.pendingRemote.tags : sentBase.tags },
         overwrite_revision: overwriteRevision
@@ -171,12 +180,18 @@ export default class extends Controller {
       if (this.isNew) {
         this.clearDraft()
         this.creationSnapshot = null
+        if (result.inline_after_create && this.inlineValue) {
+          window.history.replaceState(window.history.state, "", result.edit_url)
+          const canonicalUrl = new URL(result.edit_url, window.location.href)
+          canonicalUrl.searchParams.delete("edit")
+          this.backTarget.href = canonicalUrl.href
+        } else if (result.inline_after_create) this.pendingInlineVisitUrl = result.edit_url
         this.planIdValue = result.id
         this.element.action = result.update_url
         this.stateUrlValue = result.state_url
         this.leaseUrlValue = result.lease_url
         if (this.active) {
-          window.history.replaceState(window.history.state, "", result.edit_url)
+          if (!result.inline_after_create) window.history.replaceState(window.history.state, "", result.edit_url)
           this.subscriptionTarget.innerHTML = result.subscription_html
           this.poll = setInterval(() => { if (!document.hidden) this.refresh() }, 2500)
         }
@@ -190,6 +205,13 @@ export default class extends Controller {
       this.setStatus(newerChanges ? (this.inlineValue ? "Changes ready to save" : "Saved · newer changes waiting") : `All changes saved · v${result.revision}`,
         newerChanges ? "queued" : "saved")
       this.persistDraft()
+      if (this.pendingInlineVisitUrl && !newerChanges && this.active) {
+        const url = this.pendingInlineVisitUrl
+        this.pendingInlineVisitUrl = null
+        this.leaving = true
+        if (window.Turbo) window.Turbo.visit(url, { action: "replace" })
+        else window.location.replace(url)
+      }
       return true
     } catch (error) {
       // A definite validation rejection did not create anything. A lost or
@@ -367,6 +389,11 @@ export default class extends Controller {
     try {
       await this.whenIdle()
       if (!this.active || this.blocked) return
+      if (this.isNew && this.textareaTarget.value === this.base.content) {
+        this.element.dispatchEvent(new CustomEvent("coplan:editor-closed", { bubbles: true,
+          detail: { controller: this, snapshot: { ...this.base } } }))
+        return
+      }
       if (!this.snapshot().title.trim()) { this.setStatus("Add a document title to save", "error"); this.revealDetails(); return }
       if (!this.element.checkValidity()) this.revealDetails()
       if (!this.element.reportValidity()) return
@@ -406,6 +433,11 @@ export default class extends Controller {
       if (this.busy || this.dirty()) this.setStatus("Saving before going back…", "saving")
       await this.whenIdle()
       if (!this.active) return
+      if (this.isNew && this.textareaTarget.value === this.base.content) {
+        this.leaving = true
+        window.Turbo.visit(destination())
+        return
+      }
       if ((!this.isNew || this.dirty()) && !this.element.reportValidity()) { this.setStatus("Correct the highlighted field before going back", "error"); return }
       if (this.blocked) { this.setStatus("Resolve the conflict before going back · draft retained", "error"); return }
       while (this.dirty()) {
@@ -429,7 +461,6 @@ export default class extends Controller {
       content => this.editorChanged("markdown", content))
     this.mode = mode
     this.element.querySelectorAll(".document-editor__mode [data-mode]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)))
-    if (this.inlineValue) this.element.querySelectorAll(".document-editor__inline-mode [data-mode]").forEach(button => { button.hidden = button.dataset.mode === mode })
     try { sessionStorage.setItem(`coplan-editor-mode-${this.userIdValue}`, mode) } catch {}
     this.editor = mode === "markdown" ? this.rawEditor : this.richEditor
     this.updateEditors(this.textareaTarget.value)
@@ -595,7 +626,7 @@ export default class extends Controller {
     return html
   }
 
-  draftPrefix() { return `coplan-rich-draft-${this.userIdValue}-${this.planIdValue}-` }
+  draftPrefix() { return `coplan-rich-draft-${this.userIdValue}-${this.isNew ? `new-${this.draftScopeValue}` : this.planIdValue}-` }
   draftKey() { return this.draftPrefix() + this.token }
   persistDraft() {
     if (!this.base) return
