@@ -1,10 +1,7 @@
 ---
 name: Test Plan
 icon: shield
-description: >-
-  How a change gets verified before it is trusted: scope, cases, pass
-  criteria. The reader is whoever runs the tests and whoever signs off
-  on the result.
+description: Checks that prove a change is ready.
 ---
 <!-- Test Plan: each case independently runnable by someone who didn't
 write it. Record actual results in the Cases table as you run them -

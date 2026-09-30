@@ -1,10 +1,7 @@
 ---
 name: Handoff
 icon: file-text
-description: >-
-  State transfer at the end of a work session - agent or human - for
-  whoever picks the work up next. Optimize their first ten minutes.
-  Archive it once it has been picked up.
+description: What the next person or agent needs to continue.
 ---
 <!-- Handoff: written for whoever continues this work, possibly with
 none of your context. Links beat prose - every claim of "done" carries

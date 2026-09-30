@@ -18,7 +18,9 @@ export default class extends Controller {
     menu.style.margin = "0"
     menu.style.top = `${rect.bottom + 6}px`
     menu.style.left = "auto"
-    menu.style.right = `${Math.max(window.innerWidth - rect.right, 8)}px`
+    // The root's rendered right edge accounts for scrollbar-gutter: stable;
+    // innerWidth and clientWidth still include that reserved strip in Chrome.
+    menu.style.right = `${Math.max(document.documentElement.getBoundingClientRect().right - rect.right, 8)}px`
     this.#watchScroll()
   }
 

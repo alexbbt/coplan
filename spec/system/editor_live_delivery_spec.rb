@@ -103,13 +103,13 @@ RSpec.describe "New document live delivery", type: :system do
     expect(page).to have_current_path(root_path)
     visit new_plan_path
     expect(page).to have_css('[aria-label="Document body"]', wait: 20)
-    fill_in "plan_title", with: "Created live"
+    find("#plan-header .inline-editor__title", wait: 10).send_keys("Created live")
     click_button "Dual", exact: true
     raw = find('[aria-label="Markdown source"]')
     raw.send_keys(source)
     expect(page).to have_content("All changes saved · v1", wait: 10)
     created = CoPlan::Plan.find_by!(title: "Created live")
-    expect(page).to have_current_path(plan_edit_page_path(created))
+    expect(page).to have_current_path(plan_page_path(created, edit: "continue"))
     page.execute_script(<<~'JS')
       const c = Stimulus.getControllerForElementAndIdentifier(document.querySelector("form.document-editor"), "coplan--editor");
       clearInterval(c.poll); c.poll = null;
@@ -145,7 +145,7 @@ RSpec.describe "New document live delivery", type: :system do
     [ "Editor", "Raw", "Dual" ].each { |mode| click_button mode, exact: true }
     expect(page.evaluate_script('window.createdConsumer.subscriptions.subscriptions.filter(s => s.identifier === window.createdSubscription.identifier).length')).to eq(1)
     expect(page.evaluate_script('Stimulus.getControllerForElementAndIdentifier(document.querySelector("form.document-editor"), "coplan--editor").poll')).to be_nil
-    click_link "Close editor"
+    click_link "Done"
     expect(page).to have_current_path(plan_page_path(created), wait: 10)
     expect(page.evaluate_script('window.createdSource.isConnected')).to eq(false)
     expect(page.evaluate_script('window.createdConsumer.subscriptions.subscriptions.includes(window.createdSubscription)')).to eq(false)

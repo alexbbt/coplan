@@ -42,6 +42,22 @@ RSpec.describe "Sessions", type: :request do
     expect(response).to redirect_to(sign_in_path)
   end
 
+  it "clears a pending sign-in prompt after authentication" do
+    get library_page_path(alice)
+    expect(response).to redirect_to(sign_in_path)
+    expect(flash[:alert]).to eq("Please sign in.")
+
+    # Turbo may serve the sign-in page from its cache, leaving this redirect's
+    # flash pending when the form posts to the server.
+    post sign_in_path, params: { email: alice.email }
+    expect(flash[:alert]).to be_nil
+    follow_redirect!
+    expect(response.body).not_to include("Please sign in.")
+
+    get library_page_path(alice)
+    expect(response.body).not_to include("Please sign in.")
+  end
+
   it "unauthenticated access to / renders the public landing page" do
     get root_path
     expect(response).to have_http_status(:ok)

@@ -91,6 +91,7 @@ module CoPlan
       load_workspace_sidebar
       load_needs_attention
       @plan_types = PlanType.order(:name)
+      @creation_plan_types = PlanType.creation_order(@plan_types)
       @show_onboarding_banner = CoPlan.configuration.onboarding_banner.present? &&
         !current_user.created_plans.exists?
     end
@@ -212,21 +213,34 @@ module CoPlan
     end
 
     def new
-      @plan = Plan.new(title: "", created_by_user: current_user)
-      @draft_content = ""
+      @new_plan_type = PlanType.find_by(id: params[:plan_type_id]) if params[:plan_type_id].present?
+      return head :not_found if params[:plan_type_id].present? && !@new_plan_type
+      @new_folder = current_user.library.folders.find_by(id: params[:folder_id]) if params[:folder_id].present?
+      return head :not_found if params[:folder_id].present? && !@new_folder
+
+      @plan = Plan.new(title: "", created_by_user: current_user, plan_type: @new_plan_type)
+      @draft_content = @new_plan_type&.template_content.to_s
       @base_revision = 0
       load_tag_suggestions
-      render :edit_content
+      render :new_inline
     end
 
     def create
+      plan_type = PlanType.find_by(id: params[:plan_type_id]) if params[:plan_type_id].present?
+      return render json: { error: "Choose a valid plan type." }, status: :unprocessable_content if params[:plan_type_id].present? && !plan_type
+      folder = current_user.library.folders.find_by(id: params[:folder_id]) if params[:folder_id].present?
+      return render json: { error: "That folder no longer exists." }, status: :unprocessable_content if params[:folder_id].present? && !folder
+
       plan = Plans::CreateHumanDraft.call(user: current_user, title: params.dig(:plan, :title), content: params[:content],
-        tags: params.dig(:plan, :tag_names), creation_key: params[:creation_key])
+        tags: params.dig(:plan, :tag_names), creation_key: params[:creation_key], plan_type: plan_type, folder: folder)
       @plan = plan
-      render json: editor_snapshot.merge(edit_url: helpers.plan_edit_browse_path(plan), id: plan.id,
+      edit_url = helpers.plan_browse_path(plan, edit: "continue")
+      render json: editor_snapshot.merge(edit_url: edit_url, inline_after_create: true, id: plan.id,
         subscription_html: helpers.turbo_stream_from(plan),
         update_url: update_content_plan_path(plan), state_url: editor_state_plan_path(plan), lease_url: editor_lease_plan_path(plan))
     rescue Plans::CreateHumanDraft::InvalidKey => error
+      render json: { error: error.message }, status: :unprocessable_content
+    rescue Plans::CreateHumanDraft::PlacementFailed => error
       render json: { error: error.message }, status: :unprocessable_content
     rescue ActiveRecord::RecordInvalid => error
       render json: { error: error.record.errors.full_messages.to_sentence }, status: :unprocessable_content
@@ -250,13 +264,6 @@ module CoPlan
 
     def preview_draft
       render html: helpers.render_markdown(params[:content].to_s, interactive: false), layout: false
-    end
-
-    def edit_content
-      authorize!(@plan, :edit_content?)
-      @draft_content = @plan.current_content
-      @base_revision = @plan.current_revision
-      load_tag_suggestions
     end
 
     # Human whole-document editing goes through the same pipeline as agent

@@ -12,7 +12,7 @@ RSpec.describe "Editor toolbar", type: :system do
     expect(page).to have_current_path(root_path)
     visit plan_edit_page_path(plan)
     expect(page).to have_css('[aria-label="Document body"]', wait: 20)
-    expect(page).to have_css('.document-editor__save-status[data-state="idle"]')
+    expect(page).to have_css('.document-editor__save-status[data-state="idle"]', visible: :all)
   end
 
   def raw
@@ -20,12 +20,12 @@ RSpec.describe "Editor toolbar", type: :system do
   end
 
   def status
-    find(".document-editor__save-status")
+    find(".document-editor__save-status", visible: :all)
   end
 
   it "shows saving through in-flight typing, then fades the acknowledged autosave without moving the toolbar" do
     click_button "Raw", exact: true
-    bounds = status.rect
+    bounds = find(".document-editor__close-inline").rect
     page.execute_script(<<~'JS')
       const original = window.fetch;
       window.savedBodies = [];
@@ -48,23 +48,22 @@ RSpec.describe "Editor toolbar", type: :system do
     expect(page).to have_css('.document-editor__save-status[data-state="saving"] .document-editor__save-spinner')
     expect(status["title"]).to eq("Saving…")
     expect(page.evaluate_script("window.saveStates")).to include(
-      { "state" => "queued", "title" => "Saving soon…", "queuedVisible" => true },
+      { "state" => "queued", "title" => "Changes ready to save", "queuedVisible" => false },
       { "state" => "saving", "title" => "Saving…", "queuedVisible" => false }
     )
     raw.send_keys(:right, " and newer typing")
     expect(status["data-state"]).to eq("saving")
     page.execute_script("window.finishSave()")
-    expect(page).to have_css('.document-editor__save-status[data-state="saved"]', wait: 10)
+    expect(page).to have_css('.document-editor__save-status[data-state="saved"]', visible: :all, wait: 10)
     expect(plan.reload.current_content).to eq("First edit and newer typing")
     expect(status["title"]).to include("All changes saved · v3")
-    expect(page).to have_css('.document-editor__save-status[aria-live="polite"][aria-atomic="true"]')
-    expect(status.rect).to eq(bounds)
+    expect(page).to have_css('#coplan-inline-save-announcement[aria-live="polite"][aria-atomic="true"]', visible: :all)
+    expect(find(".document-editor__close-inline").rect).to eq(bounds)
     expect(page.evaluate_script("window.savedBodies.every(body => !('change_summary' in body))")).to eq(true)
-    # Wait for the real CSS animation rather than asserting only a class name.
-    expect(page).to have_css(".document-editor__save-check", visible: :all, wait: 5) { |check| check.style("opacity")["opacity"] == "0" }
+    expect(find(".document-editor__close-inline")["data-state"]).to eq("idle")
     raw.send_keys(:right, " again")
-    expect(page).to have_css('.document-editor__save-status[data-state="saved"][title*="v4"]', wait: 10)
-    expect(page).to have_css(".document-editor__save-check")
+    expect(page).to have_css('.document-editor__save-status[data-state="saved"][title*="v4"]', visible: :all, wait: 10)
+    expect(find(".document-editor__close-inline")["data-state"]).to eq("idle")
     expect(plan.reload.current_content).to end_with("again")
     page.save_screenshot(Rails.root.join("tmp/editor-toolbar-raw.png"))
   end
@@ -74,7 +73,7 @@ RSpec.describe "Editor toolbar", type: :system do
     # Both native key sequences occur within the debounce, without a test sleep.
     raw.send_keys([ mod, "a" ], "Temporary edit", [ mod, "z" ])
     expect(raw).to have_text("Original prose.")
-    expect(page).to have_css('.document-editor__save-status[data-state="idle"]')
+    expect(page).to have_css('.document-editor__save-status[data-state="idle"]', visible: :all)
     expect(page).not_to have_css(".document-editor__save-queued")
     expect(plan.reload.current_revision).to eq(1)
   end
@@ -90,7 +89,7 @@ RSpec.describe "Editor toolbar", type: :system do
     expect(plan.reload.current_revision).to eq(1)
     page.execute_script("window.fetch = window.originalFetch")
     click_button "Retry sync"
-    expect(page).to have_css('.document-editor__save-status[data-state="saved"]', wait: 10)
+    expect(page).to have_css('.document-editor__save-status[data-state="saved"]', visible: :all, wait: 10)
     expect(page).not_to have_content("Offline")
     expect(plan.reload.current_content).to eq("Retained draft with more")
   end
@@ -132,7 +131,7 @@ RSpec.describe "Editor toolbar", type: :system do
     expect(page).not_to have_css(".document-editor__save-check")
     click_button "Raw", exact: true
     raw.send_keys([ mod, "a" ], "Human follow-up")
-    expect(page).to have_css('.document-editor__save-status[data-state="saved"]', wait: 10)
+    expect(page).to have_css('.document-editor__save-status[data-state="saved"]', visible: :all, wait: 10)
     expect(plan.reload.current_content).to eq("Human follow-up")
     expect(plan.tag_names).to eq([ "remote-tag" ])
   end
@@ -143,7 +142,7 @@ RSpec.describe "Editor toolbar", type: :system do
     bounds = page.evaluate_script(<<~'JS')
       (() => {
         const toolbar = document.querySelector('.document-editor__toolbar').getBoundingClientRect();
-        const status = document.querySelector('.document-editor__save-status').getBoundingClientRect();
+        const status = document.querySelector('.document-editor__close-inline').getBoundingClientRect();
         return { gap: toolbar.right - status.right, top: status.top - toolbar.top, right: toolbar.right, width: innerWidth };
       })()
     JS

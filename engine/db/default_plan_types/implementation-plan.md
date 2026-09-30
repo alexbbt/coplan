@@ -1,11 +1,7 @@
 ---
 name: Implementation Plan
 icon: map
-description: >-
-  A step-by-step plan for building a specific change - the document an
-  agent or engineer executes. Steps are checkboxes with a verification
-  each. The reader is whoever does the work, and whoever approves it
-  first.
+description: Steps and checks for building a specific change.
 ---
 <!-- Implementation Plan: a living checklist. Check steps off as you
 execute - the checkboxes are the plan's state, so no separate status

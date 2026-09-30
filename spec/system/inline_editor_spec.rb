@@ -40,6 +40,46 @@ RSpec.describe "Inline plan editing", type: :system do
     expect(page).to have_no_css(".inline-editor form.document-editor", wait: 10)
   end
 
+  it "uses the toolbar Done control to leave inline editing without a blank page" do
+    within("#plan-toolbar") { click_link "Edit" }
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    within("#plan-toolbar") { click_link "Done" }
+
+    expect(page).to have_css("#plan-content-body", text: "First paragraph.", wait: 15)
+    expect(page).to have_no_css(".inline-editor form.document-editor", wait: 10)
+    expect(page).to have_current_path(plan_page_path(plan))
+  end
+
+  it "opens legacy edit links inline and keeps all three editing modes" do
+    visit plan_legacy_edit_page_path(plan)
+
+    expect(page).to have_current_path(plan_page_path(plan, edit: 1), wait: 15)
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    within(".inline-editor") do
+      click_button "Raw"
+      expect(page).to have_css('.document-editor[data-mode="markdown"] [aria-label="Markdown source"]')
+      click_button "Dual"
+      expect(page).to have_css('.document-editor[data-mode="dual"] [aria-label="Markdown source"]')
+      expect(page).to have_css('.document-editor[data-mode="dual"] [aria-label="Document body"]')
+      click_button "Editor"
+      click_button "Done editing"
+    end
+    expect(page).to have_current_path(plan_page_path(plan), wait: 15)
+  end
+
+  it "closes a presentation's auto-opened inline editor from the toolbar" do
+    type = create(:plan_type, name: "Presentation")
+    plan.update!(plan_type: type)
+    visit plan_page_path(plan, edit: 1)
+
+    expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
+    within("#plan-toolbar") { click_link "Done" }
+
+    expect(page).to have_css("#plan-header .page-header__title", text: "Inline plan", wait: 15)
+    expect(page).to have_no_css(".inline-editor form.document-editor", wait: 10)
+    expect(page).to have_current_path(plan_page_path(plan))
+  end
+
   it "keeps the page at the top when editing starts above the document" do
     page.execute_script("window.scrollTo(0, 0)")
     expect(page.evaluate_script("window.scrollY")).to eq(0)
@@ -138,13 +178,13 @@ RSpec.describe "Inline plan editing", type: :system do
       selection.addRange(range)
     JS
 
-    click_button "Switch to Markdown"
+    click_button "Raw"
     expect(page.evaluate_script("window.getSelection().anchorOffset")).to eq(markdown.index("paragraph**") + 4)
-    click_button "Switch to editor"
+    click_button "Editor"
     expect(page.evaluate_script("window.getSelection().anchorNode.textContent")).to eq("paragraph")
     expect(page.evaluate_script("window.getSelection().anchorOffset")).to eq(4)
 
-    click_button "Switch to Markdown"
+    click_button "Raw"
     page.execute_script(<<~JS, markdown.index("First paragraph") + 6)
       const node = document.querySelector('.inline-editor .document-editor__raw .ProseMirror code').firstChild
       const range = document.createRange()
@@ -154,7 +194,7 @@ RSpec.describe "Inline plan editing", type: :system do
       selection.removeAllRanges()
       selection.addRange(range)
     JS
-    click_button "Switch to editor"
+    click_button "Editor"
     expect(page.evaluate_script("window.getSelection().anchorNode.textContent")).to eq("First paragraph.")
     expect(page.evaluate_script("window.getSelection().anchorOffset")).to eq(6)
   end
@@ -211,10 +251,12 @@ RSpec.describe "Inline plan editing", type: :system do
       base_revision: plan.current_revision, actor_type: "human", actor_id: author.id)
     visit plan_page_path(plan)
     page.execute_script("document.querySelectorAll('#plan-content-body p')[40].scrollIntoView({block: 'start'})")
-    expect(page).to have_css(".site-nav__edit", visible: true)
+    expect(page).to have_css(".site-nav__plan-context--visible .site-nav__edit", visible: true)
     before = page.evaluate_script("document.querySelectorAll('#plan-content-body p')[40].getBoundingClientRect().top")
 
-    find(".site-nav__edit").click
+    # The nav slot animates its width after appearing. Activate the link
+    # directly so Selenium's pointer movement cannot hit the shifting title.
+    page.execute_script("document.querySelector('.site-nav__plan-context--visible .site-nav__edit').click()")
     expect(page).to have_css(".inline-editor .ProseMirror[contenteditable='true']", wait: 20)
     expect(page).to have_current_path(plan_page_path(plan))
     during = page.evaluate_script("Array.from(document.querySelectorAll('.inline-editor .ProseMirror p')).find(p => p.textContent.startsWith('Paragraph 41'))?.getBoundingClientRect().top")

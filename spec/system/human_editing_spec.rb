@@ -53,7 +53,7 @@ RSpec.describe "Human plan editing", type: :system do
     # Use native selection/typing: Capybara's programmatic input.select() can
     # lose its range when Chrome refocuses the element before send_keys.
     modifier = RUBY_PLATFORM.include?("darwin") ? :meta : :control
-    find("#plan_title").send_keys([ modifier, "a" ], "Renamed In Editor")
+    find("#plan-header .inline-editor__title").send_keys([ modifier, "a" ], "Renamed In Editor")
     expect(page).not_to have_css(".document-editor__menu")
     expect(page).not_to have_field("plan_tag_names")
     expect(page).not_to have_field("change_summary", visible: :all)
@@ -145,7 +145,7 @@ RSpec.describe "Human plan editing", type: :system do
     page.execute_script('window.fetch = window.originalFetch')
     accept_confirm { click_button "Replace reviewed version with my draft" }
     expect(page).to have_content("All changes saved · v3")
-    click_link "Close editor"
+    click_link "Done"
     expect(page).to have_current_path(plan_page_path(plan))
     expect(plan.reload.edit_lease).to be_nil
   end
@@ -162,7 +162,7 @@ RSpec.describe "Human plan editing", type: :system do
     expect(page).to have_content("All changes saved · v2", wait: 10)
     expect(plan.reload.current_content).to include("Autosaved from typing")
     expect(plan.edit_lease).to be_nil
-    click_link "Close editor"
+    click_link "Done"
     expect(page).to have_css(".markdown-rendered", text: "Autosaved from typing")
     page.refresh
     expect(page).to have_css(".markdown-rendered", text: "Autosaved from typing")
@@ -187,8 +187,19 @@ RSpec.describe "Human plan editing", type: :system do
     end
     editor.send_keys([ RUBY_PLATFORM.include?("darwin") ? :meta : :control, :shift, "8" ])
     expect(page).to have_css(".ProseMirror ul li")
-    editor.send_keys(:right)
+    selection_error = page.evaluate_async_script(<<~'JS')
+      const done = arguments[0]
+      import("prosemirror-state").then(({ TextSelection }) => {
+        const controller = window.Stimulus.getControllerForElementAndIdentifier(document.querySelector("form.document-editor"), "coplan--editor")
+        const view = controller.richEditor.view
+        view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)))
+        view.focus()
+        done()
+      }).catch(error => done(error.message))
+    JS
+    expect(selection_error).to be_nil
     editor.send_keys(:enter)
+    expect(page).to have_css(".ProseMirror li", count: 2)
     editor.send_keys("Second item")
     expect(page).to have_css(".ProseMirror li", count: 2)
   end

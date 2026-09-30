@@ -20,7 +20,8 @@ RSpec.describe "Human document editor", type: :request do
     created = CoPlan::Plan.find(response.parsed_body["id"])
     expect(created).to be_draft
     expect(created.current_plan_version.actor_type).to eq("human")
-    expect(response.parsed_body["edit_url"]).to end_with("/edit")
+    expect(response.parsed_body["edit_url"]).to end_with("?edit=continue")
+    expect(response.parsed_body["inline_after_create"]).to be(true)
     subscription = Nokogiri::HTML.fragment(response.parsed_body["subscription_html"]).at_css("turbo-cable-stream-source")
     expect(subscription["channel"]).to eq("Turbo::StreamsChannel")
     expect(Turbo::StreamsChannel.verified_stream_name(subscription["signed-stream-name"])).to eq(created.to_gid_param)

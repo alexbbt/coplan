@@ -10,18 +10,19 @@ RSpec.describe "Plan content editing (web UI)", type: :request do
     plan.current_plan_version.update!(content_markdown: "# Plan\n\nOriginal body.\n")
   end
 
-  describe "GET edit_content" do
-    it "renders the editor with the current content and revision" do
-      get plan_edit_page_path(plan)
+  describe "GET legacy edit URL" do
+    it "redirects to inline editing on the document" do
+      get plan_legacy_edit_page_path(plan)
 
-      expect(response).to have_http_status(:ok)
+      expect(response).to redirect_to(plan_page_path(plan, edit: 1))
+      follow_redirect!
       expect(response.body).to include("Original body.")
       expect(response.body).to include(%(name="base_revision"))
     end
 
     it "rejects non-authors" do
       sign_in_as(other_user)
-      get plan_edit_page_path(plan)
+      get plan_legacy_edit_page_path(plan)
       expect(response).not_to have_http_status(:ok)
     end
   end

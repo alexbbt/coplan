@@ -1,10 +1,7 @@
 ---
 name: PRD
 icon: scale
-description: >-
-  A product requirements document: what to build and why, for the team
-  building it and the stakeholders agreeing to it. The how belongs in an
-  Engineering Design.
+description: What to build, why it matters, and how to know it worked.
 ---
 <!-- PRD: the agreement about what gets built. Requirements must be
 testable statements - if you cannot check it, it is not a requirement. -->

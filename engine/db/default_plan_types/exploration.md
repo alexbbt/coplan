@@ -1,11 +1,7 @@
 ---
 name: Exploration
 icon: compass
-description: >-
-  Working through a problem that is not decided yet - candidate
-  approaches, sketches, code samples, tradeoffs. The reader is you, your
-  collaborators, and the agent working alongside you. When one approach
-  wins, retype this as an Engineering Design and restructure.
+description: Investigate options before choosing a direction.
 ---
 <!-- Exploration: thinking in progress, shared. Structure is loose on
 purpose - fragments and code samples are welcome. Keep dead ends in the

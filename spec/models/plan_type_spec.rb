@@ -40,6 +40,17 @@ RSpec.describe CoPlan::PlanType, type: :model do
     end
   end
 
+  describe ".creation_order" do
+    it "shows shipped types first, keeps host types, and hides retired types" do
+      custom = build(:plan_type, name: "Team Note")
+      research = build(:plan_type, name: "Research")
+      general = build(:plan_type, name: "General")
+      retired = build(:plan_type, name: "Old Design Doc", metadata: { "retired_from_creation" => true })
+
+      expect(described_class.creation_order([ custom, retired, research, general ])).to eq([ general, research, custom ])
+    end
+  end
+
   it "defaults default_tags to empty array" do
     plan_type = CoPlan::PlanType.new
     expect(plan_type.default_tags).to eq([])

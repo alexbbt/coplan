@@ -34,7 +34,7 @@ RSpec.describe "Editor code controls", type: :system do
     page.save_screenshot(Rails.root.join("tmp/editor-code-window.png"))
     click_button "Dual", exact: true
     expect(find('[aria-label="Markdown source"]')).to have_text("```javascript")
-    click_link "Close editor"
+    click_link "Done"
     expect(page).to have_current_path(plan_page_path(plan), wait: 10)
     expect(plan.reload.current_content).to include("```javascript\nconst answer = 42;\n```")
   end
@@ -70,7 +70,7 @@ RSpec.describe "Editor code controls", type: :system do
       expect(page).to have_css('[aria-label="Document body"]:focus')
       expect(page).to have_css(".document-editor__code-window > pre > code", text: "const entered = 7;")
       expect(find('[aria-label="Code language"]').value).to eq("javascript")
-      click_link "Close editor"
+      click_link "Done"
       expect(page).to have_current_path(plan_page_path(plan), wait: 10)
       expect(plan.reload.current_content).to include("```javascript\nconst entered = 7;\n```")
     end
@@ -138,7 +138,7 @@ RSpec.describe "Editor code controls", type: :system do
       page.execute_script("document.removeEventListener('selectionchange', window.delaySelection, true)")
       page.driver.browser.action.send_keys("const inserted = 1;").perform
       expect(all('[aria-label="Code language"]').map(&:value)).to eq([ "ruby", "javascript" ])
-      click_link "Close editor"
+      click_link "Done"
       expect(page).to have_current_path(plan_page_path(plan), wait: 10)
       expect(plan.reload.current_content.index("puts :other")).to be < plan.current_content.index("const inserted = 1;")
     end
@@ -162,7 +162,7 @@ RSpec.describe "Editor code controls", type: :system do
       click_button "Redo"
       expect(page).to have_css(".document-editor__code-window", count: 1)
       expect(page).to have_css(".document-editor__code-window", text: "puts :other")
-      click_link "Close editor"
+      click_link "Done"
       expect(page).to have_current_path(plan_page_path(plan), wait: 10)
       expect(plan.reload.current_content).not_to include("const keep", "```javascript")
     end

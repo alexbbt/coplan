@@ -10,8 +10,13 @@ module BrowsePathHelpers
     coplan_routes.browse_path(handle: handle, slug_path: rest, **options)
   end
 
-  # The document's own pages, which hang off its address.
+  # Open the document's inline editor at its canonical address.
   def plan_edit_page_path(plan, **options)
+    plan_page_path(plan, edit: 1, **options)
+  end
+
+  # The old URL is kept only as a redirect for existing bookmarks.
+  def plan_legacy_edit_page_path(plan, **options)
     handle, rest = split_plan_path(plan)
     coplan_routes.browse_edit_path(handle: handle, slug_path: rest, **options)
   end

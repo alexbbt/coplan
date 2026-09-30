@@ -1,11 +1,7 @@
 ---
 name: Engineering Design
 icon: scroll
-description: >-
-  A formal record of a technical design decision, written for reviewers
-  deciding whether to build it and maintainers later asking why it was.
-  Alternatives weighed, risks named. Still exploring options? Use
-  Exploration instead.
+description: Technical design and decisions for a proposed change.
 ---
 <!-- Engineering Design: a decision record. The reader is a reviewer with
 five minutes, then a maintainer two years from now. Keep the whole

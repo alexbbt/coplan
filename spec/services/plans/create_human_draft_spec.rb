@@ -23,6 +23,24 @@ RSpec.describe CoPlan::Plans::CreateHumanDraft do
     expect(create_draft(user: other).id).not_to eq(first.id)
   end
 
+  it "creates a typed folder draft once without an alias for an untitled path" do
+    folder = create(:folder, created_by_user: user)
+    type = create(:plan_type, name: "Research", default_tags: [ "research" ])
+    aliases_before = CoPlan::UrlAlias.count
+
+    first = described_class.call(user: user, creation_key: key, title: "Latency findings",
+      content: "Measured latency.", tags: "metrics", plan_type: type, folder: folder)
+    retried = described_class.call(user: user, creation_key: key, title: "Different title",
+      content: "Different content", tags: "", plan_type: type, folder: folder)
+
+    expect(retried.id).to eq(first.id)
+    expect(first.reload.title).to eq("Latency findings")
+    expect(first.slug).to eq("latency-findings")
+    expect(first.placement.folder).to eq(folder)
+    expect(first.tag_names).to contain_exactly("research", "metrics")
+    expect(CoPlan::UrlAlias.count).to eq(aliases_before)
+  end
+
   it "allows a corrected retry after validation fails" do
     expect { create_draft(content: "") }.to raise_error(ActiveRecord::RecordInvalid)
     expect(create_draft).to be_persisted

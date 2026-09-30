@@ -16,17 +16,20 @@ module CoPlan
       { key: "sam", locale: :en }
     ].freeze
 
-    PLAN_TYPES = [
-      { name: "General", icon: "file-text", description: "A flexible document for notes and proposals", default_tags: [] },
-      { name: "RFC", icon: "scroll", description: "A request for comments on a significant change", default_tags: [ "rfc" ] },
-      { name: "Design Doc", icon: "compass", description: "Technical design for a system or feature", default_tags: [ "design" ] },
-      { name: "ADR", icon: "scale", description: "A durable architecture decision record", default_tags: [ "architecture" ] },
-      { name: "Product Brief", icon: "lightbulb", description: "Product context, goals, and measures of success", default_tags: [ "product" ] },
-      { name: "Runbook", icon: "wrench", description: "Operational diagnosis and recovery steps", default_tags: [ "operations" ] },
-      { name: "Research Note", icon: "flask", description: "Findings, evidence, and open questions", default_tags: [ "research" ] },
-      { name: "Roadmap", icon: "map", description: "Sequenced outcomes and milestones", default_tags: [ "roadmap" ] },
-      { name: "Presentation", icon: "presentation", description: "A markdown slide deck — `---` starts a new slide inside a presentation region", default_tags: [] }
-    ].freeze
+    # Keep demo documents varied without inventing another set of types. A
+    # fresh development install should offer the same chooser as a host that
+    # loaded only the engine's shipped defaults.
+    DEMO_TYPE_TO_DEFAULT = {
+      "General" => "General",
+      "RFC" => "Exploration",
+      "Design Doc" => "Engineering Design",
+      "ADR" => "Engineering Design",
+      "Product Brief" => "Project 1-Pager",
+      "Runbook" => "Technical Documentation",
+      "Research Note" => "Research",
+      "Roadmap" => "Implementation Plan",
+      "Presentation" => "Presentation"
+    }.freeze
 
     # The browsable-URL showcase renames one folder and retitles one
     # document, so a freshly seeded app has real aliases to follow at the root.
@@ -637,12 +640,16 @@ module CoPlan
     end
 
     def seed_plan_types
-      PLAN_TYPES.index_with do |attributes|
-        PlanType.find_or_initialize_by(name: attributes.fetch(:name)).tap do |plan_type|
-          plan_type.assign_attributes(attributes)
-          plan_type.save!
-        end
-      end.transform_keys { |attributes| attributes.fetch(:name) }
+      PlanTypes::InstallDefaults.call
+      DEMO_TYPE_TO_DEFAULT.each do |legacy_name, shipped_name|
+        next if legacy_name == shipped_name
+
+        legacy_type = PlanType.find_by_name(legacy_name)
+        next unless legacy_type && !legacy_type.retired_from_creation?
+
+        legacy_type.update!(metadata: legacy_type.metadata.to_h.merge("retired_from_creation" => true))
+      end
+      DEMO_TYPE_TO_DEFAULT.transform_values { |name| PlanType.find_by_name(name) }
     end
 
     def seed_documents(users, plan_types)
@@ -663,6 +670,12 @@ module CoPlan
             metadata: plan.metadata.to_h.merge("development_seed_key" => definition.fetch(:key))
           )
         end
+
+        # Older development seeds used their own overlapping type catalog.
+        # Bring only seed-owned plans onto the shipped types; leave anything
+        # a developer created or retitled alone.
+        shipped_type = plan_types.fetch(definition.fetch(:type))
+        plan.update!(plan_type: shipped_type) if plan.plan_type_id != shipped_type.id
 
         plan.tag_names = definition.fetch(:tags)
         # A definition with no folder stays at the library root — either

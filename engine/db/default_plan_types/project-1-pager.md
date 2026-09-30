@@ -1,11 +1,7 @@
 ---
 name: Project 1-Pager
 icon: rocket
-description: >-
-  A one-page pitch for a project: the problem, the bet, what it costs,
-  what changes if it works. The reader has ten minutes and decides
-  whether this deserves investment. Persuasive language is welcome in
-  this type - but every claim still needs a specific behind it.
+description: A concise pitch for a project.
 ---
 <!-- Project 1-Pager: the whole case on one page. This type overrides
 the default writing-style rules: persuasion is allowed. Specifics are

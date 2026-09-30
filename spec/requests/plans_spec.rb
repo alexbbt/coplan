@@ -8,6 +8,44 @@ RSpec.describe "Plans", type: :request do
 
   before { sign_in_as(alice) }
 
+  describe "new plan in a folder" do
+    it "shows a typed template without creating a plan, then creates with the chosen title and folder on first save" do
+      folder = create(:folder, created_by_user: alice)
+      type = create(:plan_type, name: "Design Doc", template_content: "## Problem\n", default_tags: [ "design" ])
+
+      expect {
+        get new_plan_path(plan_type_id: type.id, folder_id: folder.id)
+      }.not_to change(CoPlan::Plan, :count)
+      expect(response.body).to include("## Problem")
+      expect(response.body).to include("name=\"plan_type_id\"")
+      expect(response.body).to include("name=\"folder_id\"")
+
+      expect {
+        post plans_path, as: :json, params: { plan_type_id: type.id, folder_id: folder.id,
+          plan: { title: "Checkout redesign", tag_names: "payments" }, content: "## Problem\n\nSlow checkout" }
+      }.to change(CoPlan::Plan, :count).by(1)
+
+      draft = CoPlan::Plan.order(:created_at).last
+      expect(draft).to have_attributes(title: "Checkout redesign", visibility: "draft", plan_type: type)
+      expect(draft.current_content).to eq("## Problem\n\nSlow checkout")
+      expect(draft.tag_names).to contain_exactly("design", "payments")
+      expect(draft.placement.folder).to eq(folder)
+      expect(draft.slug).to eq("checkout-redesign")
+    end
+
+    it "rejects a folder outside the author's library without creating a plan" do
+      folder = create(:folder, created_by_user: bob)
+      type = create(:plan_type)
+
+      expect {
+        post plans_path, as: :json, params: { plan_type_id: type.id, folder_id: folder.id,
+          plan: { title: "Wrong folder" }, content: "Some content" }
+      }.not_to change(CoPlan::Plan, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["error"]).to include("folder no longer exists")
+    end
+  end
+
   it "index shows plans" do
     plan # trigger creation
     get library_page_path(alice)
@@ -772,7 +810,7 @@ RSpec.describe "Plans", type: :request do
       # instead of showing a dead count.
       get library_page_path(alice, tag: "infra")
       expect(response.body).to match(%r{RFC</span>\s*<span class="sidebar__count">1</span>})
-      expect(response.body).not_to include("Design Doc")
+      expect(response.body).not_to match(%r{Design Doc</span>\s*<span class="sidebar__count">})
     end
   end
 

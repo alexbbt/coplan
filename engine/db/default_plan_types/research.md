@@ -1,11 +1,7 @@
 ---
 name: Research
 icon: flask
-description: >-
-  Findings from an information-gathering run - internal systems,
-  history, competitive analysis, legal, external sources. Every claim
-  carries a footnote citation to a durable source and the date it was
-  confirmed. The reader acts on the findings without redoing the work.
+description: Findings, evidence, and sources in one place.
 ---
 <!-- Research: the reader trusts this document instead of re-searching.
 That trust is built one citation at a time - every claim gets a

@@ -1,6 +1,11 @@
 module CoPlan
   class PlanType < ApplicationRecord
     GENERAL_NAME = "General"
+    CREATION_ORDER = [
+      "General", "Exploration", "Engineering Design", "Implementation Plan",
+      "PRD", "Project 1-Pager", "Research", "Technical Documentation",
+      "Test Plan", "Presentation", "Handoff", "Scratchpad"
+    ].freeze
 
     # Every plan must have a type, so a type with plans can't be deleted —
     # nullify would mint invalid (and, at the DB level, unstorable) plans.
@@ -14,6 +19,18 @@ module CoPlan
     # name lookups are case-insensitive (see find_by_name), so two types
     # differing only by case would be indistinguishable through the API.
     validates :name, presence: true, uniqueness: { case_sensitive: false }
+
+    # Historical types remain attached to existing plans after a host retires
+    # them, but no longer crowd the new-plan chooser.
+    def retired_from_creation?
+      metadata.to_h["retired_from_creation"] == true
+    end
+
+    def self.creation_order(types)
+      types.reject(&:retired_from_creation?).sort_by do |type|
+        [ CREATION_ORDER.index(type.name) || CREATION_ORDER.length, type.name.downcase ]
+      end
+    end
 
     # Case-insensitive, adapter-independent name lookup. MySQL's default
     # collations compare case-insensitively but PostgreSQL's don't, so a
