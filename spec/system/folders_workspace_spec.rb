@@ -218,6 +218,50 @@ RSpec.describe "Folders workspace", type: :system do
       expect(page).not_to have_css(".plan-row[data-plan-id='#{developing_plan.id}']")
     end
 
+    %w[light dark].each do |theme|
+      it "creates and navigates five compact folder levels in #{theme} mode, rejecting a sixth" do
+        author.update!(theme_preference: theme)
+        parent = CoPlan::Folder.find_or_create_by_path!("Features/Feature/Android", library: author.library)
+        visit folder_page_path(parent)
+        expect(page).to have_css("html[data-theme='#{theme}']")
+        sidebar_width = find(".workspace__sidebar").native.rect.width
+
+        %w[Rollout Retro].each do |name|
+          click_button "New folder"
+          within("#new-folder-modal") do
+            expect(page).to have_select("Inside", selected: parent.path)
+            fill_in "Name", with: name
+            click_button "Create folder"
+          end
+          expect(page).to have_css(".workspace-crumbs__crumb--current", text: name)
+          parent = author.library.folders.find_by!(name: name)
+        end
+        expect(parent.depth).to eq(5)
+
+        within(".workspace__sidebar") do
+          links = (parent.ancestors + [ parent ]).map do |folder|
+            find(".folder-tree__link[data-folder-id='#{folder.id}']")
+          end
+          # Four extra levels use two rem; disclosure targets remain separate.
+          expect(links.last.native.rect.x - links.first.native.rect.x).to eq(32)
+          click_link "Android"
+        end
+        expect(page).to have_css(".workspace-crumbs__crumb--current", text: "Android")
+        find(".folder-row", text: "Rollout").click
+        find(".folder-row", text: "Retro").click
+        expect(page).to have_css(".workspace-crumbs__crumb--current", text: "Retro")
+        expect(find(".workspace__sidebar").native.rect.width).to eq(sidebar_width)
+
+        click_button "New folder"
+        within("#new-folder-modal") do
+          fill_in "Name", with: "Too deep"
+          click_button "Create folder"
+        end
+        expect(page).to have_css(".flash--alert", text: "maximum folder depth of 5")
+        expect(author.library.folders.where(name: "Too deep")).not_to exist
+      end
+    end
+
     it "filters by tag from the sidebar" do
       developing_plan.tag_names = [ "security" ]
       visit library_page_path(author)
@@ -304,6 +348,7 @@ RSpec.describe "Folders workspace", type: :system do
     end
 
     it "files their own plan via Move to folder… in the plan menu" do
+      deepest = CoPlan::Folder.find_or_create_by_path!("Features/Feature/Android/Rollout/Retro", library: author.library)
       visit plan_page_path(developing_plan)
 
       # Owners organize, they don't "save" — no Save button on your own plan.
@@ -315,11 +360,11 @@ RSpec.describe "Folders workspace", type: :system do
         expect(page).to have_css("#folder-picker-title", text: "Move to folder")
         # The tree is hierarchical: Q3 nests under Team EBT.
         expect(page).to have_css(".folder-picker__tree--nested .folder-picker__name", text: "Q3")
-        find(".folder-picker__option", text: "Infra").click
+        find(".folder-picker__option", text: "Retro").click
       end
 
-      expect(page).to have_css(".flash--notice", text: "Infra", wait: 5)
-      expect(author.library.placements.find_by(plan_id: developing_plan.id).folder).to eq(infra)
+      expect(page).to have_css(".flash--notice", text: "Retro", wait: 5)
+      expect(author.library.placements.find_by(plan_id: developing_plan.id).folder).to eq(deepest)
     end
 
     it "unfiles their own plan with the picker's explicit Remove from folder" do
@@ -376,6 +421,7 @@ RSpec.describe "Folders workspace", type: :system do
 
       row = find(".plan-row[data-plan-id='#{developing_plan.id}']")
       branch_link = find(".folder-tree__link", text: "Team EBT")
+      sidebar_width = find(".workspace__sidebar").native.rect.width
 
       # Q3 is buried in a collapsed <details> branch.
       expect(page).not_to have_css(".folder-tree__link", text: "Q3")
@@ -386,6 +432,7 @@ RSpec.describe "Folders workspace", type: :system do
       # Two pulses first, then the branch springs open (650ms).
       expect(branch_link[:class]).to include("dnd-spring")
       expect(page).to have_css(".folder-tree__branch[open] .folder-tree__link", text: "Q3", wait: 2)
+      expect(find(".workspace__sidebar").native.rect.width).to eq(sidebar_width)
 
       # Drag away — the sprung branch snaps shut ("temporarily there").
       fire_drag_event(find(".folder-tree__link", text: "Infra"), "dragover")
@@ -442,7 +489,8 @@ RSpec.describe "Folders workspace", type: :system do
   describe "mobile sidebar" do
     it "collapses the sidebar behind a toggle at phone widths" do
       page.driver.browser.manage.window.resize_to(390, 844)
-      visit library_page_path(author)
+      deepest = CoPlan::Folder.find_or_create_by_path!("Features/Feature/Android/Rollout/Retro", library: author.library)
+      visit folder_page_path(deepest)
 
       expect(page).to have_css(".workspace__sidebar-toggle", visible: :visible)
       expect(page).to have_css(".workspace__sidebar-sections", visible: :hidden)
@@ -450,6 +498,8 @@ RSpec.describe "Folders workspace", type: :system do
       find(".workspace__sidebar-toggle").click
       expect(page).to have_css(".workspace__sidebar-sections", visible: :visible)
       expect(find(".workspace__sidebar-toggle")["aria-expanded"]).to eq("true")
+      within(".workspace__sidebar") { click_link "Retro" }
+      expect(page).to have_css(".workspace-crumbs__crumb--current", text: "Retro")
     ensure
       page.driver.browser.manage.window.resize_to(1400, 900)
     end

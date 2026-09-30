@@ -275,7 +275,7 @@ Tags categorize plans for discovery. Use them to help people find related plans.
 
 ### Libraries &amp; Folders
 
-Every user has a personal **library**: a private-to-write, public-to-browse folder tree (max 3 levels deep). Folders are shelves in *your* library — filing a plan is a **placement** on your shelf, not a property of the plan, so the same plan can sit in many people's libraries at once. You can shelve anyone's published plan, not just your own. Tags remain the cross-cutting labels; use folders for "where do I keep this?" and tags for "what is it about?".
+Every user has a personal **library**: a private-to-write, public-to-browse folder tree (max <%= CoPlan::Folder::MAX_DEPTH %> levels deep). Folders are shelves in *your* library — filing a plan is a **placement** on your shelf, not a property of the plan, so the same plan can sit in many people's libraries at once. You can shelve anyone's published plan, not just your own. Tags remain the cross-cutting labels; use folders for "where do I keep this?" and tags for "what is it about?".
 
 **List folders** (defaults to your library; pass `?library_id=` to browse someone else's read-only):
 

@@ -1104,8 +1104,7 @@ RSpec.describe "Plans", type: :request do
     end
 
     it "rejects moves that would exceed the depth cap" do
-      mid = create(:folder, name: "Mid", parent: team, created_by_user: alice)
-      leaf = create(:folder, name: "Leaf", parent: mid, created_by_user: alice)
+      leaf = CoPlan::Folder.find_or_create_by_path!("Team EBT/L2/L3/L4/L5", library: alice.library)
       reparent(q3, leaf.id)
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body["error"]).to include("depth")

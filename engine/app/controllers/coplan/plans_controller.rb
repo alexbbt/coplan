@@ -141,7 +141,7 @@ module CoPlan
       return redirect_to helpers.plan_history_browse_path(@plan) if params[:tab] == "history"
       # Where the plan lives. One placement, the same for every reader —
       # it drives the compact jump up to the containing folder.
-      @placement = PlanPlacement.includes(:library, folder: { parent: :parent })
+      @placement = PlanPlacement.includes(:library, folder: { parent: { parent: { parent: :parent } } })
         .find_by(plan_id: @plan.id)
       @my_folders = current_user.library.folders.order(:name).to_a
       @threads = @plan.comment_threads.with_kept_comments.includes({ comments: :agent_harness }, :created_by_user).order(:created_at)

@@ -13,7 +13,7 @@ module CoPlan
             # its handle. Left to the associations that's several queries a
             # plan on a list endpoint agents page through.
             .includes(:plan_type, :created_by_user, :tags,
-              placement: [ :library, { folder: { parent: :parent } } ])
+              placement: [ :library, { folder: { parent: { parent: { parent: :parent } } } } ])
             .visible_to(current_user)
             .order(updated_at: :desc)
           plans = apply_index_filters(plans)
@@ -267,7 +267,7 @@ module CoPlan
         # already iterate it, and an unfiled plan legitimately has none.
         def locations
           placements = PlanPlacement.where(plan_id: @plan.id)
-            .includes(:placed_by_user, library: :owner, folder: { parent: :parent })
+            .includes(:placed_by_user, library: :owner, folder: { parent: { parent: { parent: :parent } } })
           render json: placements.map { |placement|
             library = placement.library
             {
