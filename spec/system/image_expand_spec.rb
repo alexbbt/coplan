@@ -75,10 +75,18 @@ RSpec.describe "Expanding an image", type: :system do
   it "shows the expand arrows only while the image is hovered" do
     button = screenshot_frame.find(".image-frame__expand", visible: :all)
     expect(button["aria-label"]).to eq("Expand image")
-    expect(page.evaluate_script("getComputedStyle(document.querySelector('.image-frame__expand')).opacity")).to eq("0")
+    expect(page.evaluate_script("matchMedia('(hover: hover)').matches")).to be(true)
+
+    # Navigation does not reset the pointer left by signing in. Put it
+    # outside the image and wait for the CSS opacity transition to finish.
+    find("#plan-header").hover
+    expect(screenshot_frame).to have_css(".image-frame__expand", visible: :all) { |el| el.style("opacity")["opacity"] == "0" }
 
     screenshot_frame.hover
-    expect(screenshot_frame).to have_css(".image-frame__expand", visible: :all, wait: 5) { |el| el.style("opacity")["opacity"] == "1" }
+    expect(screenshot_frame).to have_css(".image-frame__expand", visible: :all) { |el| el.style("opacity")["opacity"] == "1" }
+
+    find("#plan-header").hover
+    expect(screenshot_frame).to have_css(".image-frame__expand", visible: :all) { |el| el.style("opacity")["opacity"] == "0" }
   end
 
   it "keeps the image on its own line, with a frame that hugs it" do
