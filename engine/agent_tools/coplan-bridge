@@ -46,6 +46,7 @@ require "uri"
 require "optparse"
 require "open3"
 require "shellwords"
+require "set"
 
 $stdout.sync = true
 
@@ -145,6 +146,12 @@ def request(method, path, body: nil, params: nil, read_timeout: 90)
   req.body = body.to_json if body
   Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", read_timeout: read_timeout) do |http|
     res = http.request(req)
+    # A rejected token never recovers on retry, and every call after it
+    # would fail the same way. Stop so a supervisor (or a person) notices,
+    # instead of polling the server in a tight loop.
+    if res.code == "401"
+      abort "coplan-bridge: #{method.upcase} #{path} -> 401. The token is invalid, expired, or revoked. Mint a new token and restart the bridge."
+    end
     warn "coplan-bridge: #{method.upcase} #{path} -> #{res.code}" unless res.code.start_with?("2")
     res.body && !res.body.empty? ? JSON.parse(res.body) : {}
   end
@@ -168,7 +175,8 @@ def wake_prompt(event)
     #{payload["comment_author"] ? "#{payload["comment_author"]} wrote: #{payload["comment_body"].to_s.strip}" : ""}
     #{payload["anchor_text"] ? "Anchored to: \"#{payload["anchor_text"]}\"" : ""}
 
-    Respond as the plan's agent, over the CoPlan API at #{BASE} (full instructions: #{BASE}/agent-instructions):
+    Respond as the plan's agent, over the CoPlan API at #{BASE} (full instructions: #{BASE}/agent-instructions).
+    Authenticate every call with `Authorization: Bearer $TOKEN`: $TOKEN in your environment is this bridge's session token.
     1. PATCH /api/v1/plans/#{event["plan_id"]}/agent_session {"state":"active","detail":"<what you're doing>"} immediately.
     2. Reply on the thread first (narrate what you'll change), then apply any edit with PUT .../content.
     3. Finish with {"state":"complete"} (or "awaiting_input" if you asked a question).
@@ -237,7 +245,9 @@ class AcpAgent
 
   def boot
     # stderr passes through so the agent's own logging stays visible.
-    @stdin, @stdout, @wait_thread = Open3.popen2(*@command)
+    # Same token handoff as the exec adapters: the prompt tells the agent
+    # to authenticate with $TOKEN, so it has to be this bridge's token.
+    @stdin, @stdout, @wait_thread = Open3.popen2({ "TOKEN" => TOKEN, "COPLAN_TOKEN" => TOKEN }, *@command)
     rpc("initialize", {
       protocolVersion: PROTOCOL_VERSION,
       # No fs or terminal capabilities: the agent works through its own
@@ -397,19 +407,51 @@ def dispatch(event)
   # Honest pill before the harness even boots.
   Bridge.patch_state(event["plan_id"], "active", "reading your comment")
 
+  # A failed turn may still have replied or edited before it exited, and
+  # redelivery hands the same event to the agent again. Say so, the way
+  # the ACP restart path does, so the retry checks before acting.
+  prompt = wake_prompt(event)
+  if ATTEMPTED.include?(event["id"])
+    prompt = "NOTE: an earlier attempt at this event failed and may have partially completed. " \
+             "Check the plan's thread and content first, and do not duplicate replies or edits already made.\n\n#{prompt}"
+  end
+  ATTEMPTED << event["id"]
+
   cmd = template.map do |part|
-    part.gsub("{session}", CONFIG.fetch("harness_session", "coplan")).gsub("{prompt}", wake_prompt(event))
+    part.gsub("{session}", CONFIG.fetch("harness_session", "coplan")).gsub("{prompt}", prompt)
   end
   puts "coplan-bridge: dispatching #{event["type"]} -> #{adapter}"
-  system(*cmd)
+  # system returns false on a nonzero exit and nil when the command can't
+  # start; neither raises. Raise here so the loop leaves the event unacked
+  # for redelivery instead of acking a turn that never happened.
+  # The agent acts with the bridge's session token, under the name the
+  # instructions use for it. Its replies and edits are then attributed to
+  # that token, and never echoed back to this bridge's inbox.
+  return if system({ "TOKEN" => TOKEN, "COPLAN_TOKEN" => TOKEN }, *cmd)
+
+  raise "#{adapter} adapter #{$?&.exitstatus ? "exited #{$?.exitstatus}" : "could not start"}"
 end
+
+# Event ids handed to an exec adapter but not yet acked, so a redelivered
+# event can be marked as a retry. An id leaves the set when its ack
+# succeeds, so the set holds only events still in flight.
+ATTEMPTED = Set.new
 
 claim_sessions
 cursor = nil
+failures = 0
 puts "coplan-bridge: draining events from #{BASE}"
 loop do
   resp = request(:get, "/api/v1/agent/events", params: { wait: 25, cursor: cursor }.compact)
-  events = resp["events"] || []
+  # A good poll always carries `events`. Anything else (a 5xx, an HTML
+  # error page) returned immediately, so wait before asking again. So did
+  # a throttled long-poll: the server had no thread to hold for us.
+  unless resp.key?("events")
+    sleep 5
+    next
+  end
+  sleep 3 if resp["throttled"]
+  events = resp["events"]
   events.each do |event|
     dispatch(event)
     # Ack each event only once its dispatch came back — at-least-once
@@ -417,12 +459,23 @@ loop do
     # never swallowed by a batch-level ack.
     cursor = event["id"]
     request(:post, "/api/v1/agent/events/ack", body: { cursor: cursor })
+    ATTEMPTED.delete(event["id"])
+    failures = 0
   rescue => e
     # Stop the batch here: acking later events would also ack this one
     # (the cursor is a high-water mark). The next poll redelivers
-    # everything unacked; the sleep keeps a wedged adapter from spinning.
-    warn "coplan-bridge: dispatch failed: #{e.class}: #{e.message} — leaving event unacked"
-    sleep 3
+    # everything unacked. Dispatch already said `active`; take that back,
+    # or every retry would refresh a pill promising a turn that isn't
+    # running. Back off so a wedged adapter doesn't spin.
+    failures += 1
+    delay = [ 3 * 2**(failures - 1), 60 ].min
+    warn "coplan-bridge: dispatch failed: #{e.class}: #{e.message} — leaving event unacked, retrying in #{delay}s"
+    begin
+      Bridge.patch_state(event["plan_id"], "complete", nil)
+    rescue StandardError
+      nil # the server may be the thing that failed; the retry will tell
+    end
+    sleep delay
     break
   end
 rescue Interrupt
